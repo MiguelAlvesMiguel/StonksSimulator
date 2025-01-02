@@ -1,38 +1,39 @@
-# sv
+# Stock Investment Simulator
 
-Everything you need to build a Svelte project, powered by [`sv`](https://github.com/sveltejs/cli).
+A learning project to understand SvelteKit and modern web development practices. This project simulates investment returns in major stock indices with Portuguese tax calculations.
 
-## Creating a project
+## Learning Goals
+- Understanding SvelteKit's component system and reactivity
+- Working with Chart.js for data visualization
+- Implementing TypeScript for type safety
+- Using Tailwind CSS for modern, responsive design
+- Managing state and data flow in Svelte applications
 
-If you're seeing this, you've probably already done this step. Congrats!
+## Features
+- Simulates investment returns for S&P 500 and Dow Jones
+- Visualizes investment growth over time
+- Calculates and displays Portuguese taxes:
+  - 0.2% transaction tax on buy
+  - 0.2% transaction tax on sell (only on profits)
+  - 28% capital gains tax
+- Shows monthly average returns
+- Combined portfolio view
 
+## Technologies Used
+- SvelteKit
+- TypeScript
+- Chart.js
+- Tailwind CSS
+- Vite
+
+## Development
 ```bash
-# create a new project in the current directory
-npx sv create
+# Install dependencies
+npm install
 
-# create a new project in my-app
-npx sv create my-app
-```
-
-## Developing
-
-Once you've created a project and installed dependencies with `npm install` (or `pnpm install` or `yarn`), start a development server:
-
-```bash
+# Start development server
 npm run dev
 
-# or start the server and open the app in a new browser tab
-npm run dev -- --open
-```
-
-## Building
-
-To create a production version of your app:
-
-```bash
+# Build for production
 npm run build
 ```
-
-You can preview the production build with `npm run preview`.
-
-> To deploy your app, you may need to install an [adapter](https://svelte.dev/docs/kit/adapters) for your target environment.

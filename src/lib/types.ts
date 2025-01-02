@@ -5,9 +5,16 @@ export interface IndexData {
     value: number;
 }
 
+export interface MonthlyAverage {
+    month: string;
+    SP500: number;
+    DOW: number;
+}
+
 export interface IndexHistory {
     SP500: IndexData[];
     DOW: IndexData[];
+    monthlyAverages: MonthlyAverage[];
 }
 
 export interface InvestmentSimulation {
@@ -22,7 +29,7 @@ export interface InvestmentSimulation {
     profitLoss: number;
     profitLossPercentage: number;
     buyTax: number;  // 0.2% transaction tax in Portugal
-    sellTax: number; // 0.2% transaction tax in Portugal
+    sellTax: number; // 0.2% transaction tax on profits in Portugal
     capitalGainsTax: number; // 28% on profits in Portugal
     netProfit: number;
 } 
