@@ -20,14 +20,19 @@
             return;
         }
 
+        const shares = investment.investmentAmount / investment.initialPrice;
+        const currentValue = shares * investment.currentPrice;
+        const profitLoss = currentValue - investment.investmentAmount;
+        const profitLossPercentage = (profitLoss / investment.investmentAmount) * 100;
+
         const newInvestment: Investment = {
             ...investment,
             id: uuidv4(),
-            shares: investment.investmentAmount / investment.initialPrice,
-            currentValue: (investment.investmentAmount / investment.initialPrice) * investment.currentPrice,
-            profitLoss: ((investment.investmentAmount / investment.initialPrice) * investment.currentPrice) - investment.investmentAmount,
-            profitLossPercentage: ((((investment.investmentAmount / investment.initialPrice) * investment.currentPrice) - investment.investmentAmount) / investment.investmentAmount) * 100,
-            estimatedTax: Math.max(0, ((((investment.investmentAmount / investment.initialPrice) * investment.currentPrice) - investment.investmentAmount) * 0.28))
+            shares,
+            currentValue,
+            profitLoss,
+            profitLossPercentage,
+            estimatedTax: profitLoss > 0 ? profitLoss * 0.28 : 0
         };
 
         dispatch('add', newInvestment);
@@ -54,6 +59,7 @@
                 bind:value={investment.stockName}
                 required
                 class="input"
+                placeholder="e.g., Apple Inc"
             />
         </div>
 
@@ -65,6 +71,7 @@
                 bind:value={investment.ticker}
                 required
                 class="input"
+                placeholder="e.g., AAPL"
             />
         </div>
 
@@ -89,6 +96,7 @@
                 step="0.01"
                 required
                 class="input"
+                placeholder="0.00"
             />
         </div>
 
@@ -102,6 +110,7 @@
                 step="0.01"
                 required
                 class="input"
+                placeholder="0.00"
             />
         </div>
 
@@ -115,21 +124,26 @@
                 step="0.01"
                 required
                 class="input"
+                placeholder="0.00"
             />
         </div>
     </div>
 
-    <button type="submit" class="mt-4 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">
+    <button type="submit" class="mt-4 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors">
         Add Investment
     </button>
 </form>
 
-<style>
+<style lang="postcss">
     .form-group {
         @apply flex flex-col gap-1;
     }
 
     .input {
         @apply px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500;
+    }
+
+    label {
+        @apply text-sm font-medium text-gray-700;
     }
 </style> 
