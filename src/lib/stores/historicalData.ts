@@ -1,44 +1,52 @@
+import { readable } from 'svelte/store';
 import type { IndexData } from '$lib/types';
-import sp500CsvData from '$lib/data/sp500.csv?raw';
-import dowJonesCsvData from '$lib/data/dowjones.csv?raw';
 
-const USD_TO_EUR = 0.92;
+// Import CSV data
+import sp500Data from '../data/sp500.csv?raw';
+import dowData from '../data/dowjones.csv?raw';
+import nasdaqData from '../data/nasdaq.csv?raw';
 
-function parseCsvData(csvContent: string): IndexData[] {
-    const lines = csvContent.trim().split('\n');
-    // Skip header row
-    return lines.slice(1).map(line => {
-        const [date, valueStr] = line.split(',');
-        return {
-            date,
-            value: parseFloat(valueStr)
-        };
-    });
+// Parse CSV data
+function parseCSV(csvData: string): IndexData[] {
+    return csvData
+        .trim()
+        .split('\n')
+        .slice(1) // Skip header
+        .map(line => {
+            const [date, value] = line.split(',');
+            return {
+                date,
+                value: parseFloat(value)
+            };
+        });
 }
 
-const allSp500Data = parseCsvData(sp500CsvData);
-const allDowData = parseCsvData(dowJonesCsvData);
+// USD to EUR conversion rate
+const USD_TO_EUR = 0.92;
 
-// Convert USD to EUR
-const convertToEur = (data: IndexData[]): IndexData[] => {
-    return data.map(entry => ({
-        date: entry.date,
-        value: entry.value * USD_TO_EUR
+// Convert values from USD to EUR
+function convertToEUR(data: IndexData[]): IndexData[] {
+    return data.map(item => ({
+        date: item.date,
+        value: item.value * USD_TO_EUR
     }));
-};
+}
 
-// Filter data by year
-const filterByYear = (data: IndexData[], year: string): IndexData[] => {
-    return data.filter(entry => entry.date.startsWith(year));
-};
+// Parse and convert data
+const sp500 = convertToEUR(parseCSV(sp500Data));
+const dow = convertToEUR(parseCSV(dowData));
+const nasdaq = convertToEUR(parseCSV(nasdaqData));
 
-// Export historical data in EUR for both years
-export const historical2024Data = {
-    SP500: convertToEur(filterByYear(allSp500Data, '2024')),
-    DOW: convertToEur(filterByYear(allDowData, '2024'))
-};
+// Create stores
+export const historical2024Data = readable({
+    SP500: sp500,
+    DOW: dow,
+    NASDAQ: nasdaq
+});
 
-export const historical2025Data = {
-    SP500: convertToEur(filterByYear(allSp500Data, '2025')),
-    DOW: convertToEur(filterByYear(allDowData, '2025'))
-}; 
+// Mock data for 2025 (using the same data for now)
+export const historical2025Data = readable({
+    SP500: sp500,
+    DOW: dow,
+    NASDAQ: nasdaq
+}); 

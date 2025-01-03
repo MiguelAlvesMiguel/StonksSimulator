@@ -32,4 +32,10 @@ export interface InvestmentSimulation {
     sellTax: number; // 0.2% transaction tax on profits in Portugal
     capitalGainsTax: number; // 28% on profits in Portugal
     netProfit: number;
+}
+
+export interface HistoricalData {
+    SP500: IndexData[];
+    DOW: IndexData[];
+    NASDAQ: IndexData[];
 } 

@@ -11,9 +11,10 @@
     let chart: Chart | null = null;
     let viewMode: 'SP500' | 'DOW' | 'COMBINED' = 'COMBINED';
 
-    $: historicalData = selectedYear === '2024' ? historical2024Data : historical2025Data;
+    $: historicalData = selectedYear === '2024' ? $historical2024Data : $historical2025Data;
     $: sp500Data = [...historicalData.SP500].reverse();
     $: dowData = [...historicalData.DOW].reverse();
+    $: nasdaqData = [...historicalData.NASDAQ].reverse();
     
     // Portuguese tax rates and fees
     const TRANSACTION_TAX = 0.002; // 0.2% Imposto do Selo
@@ -84,14 +85,44 @@
     $: dowTotalCosts = dowTotalFees + dowTotalTaxes;
     $: dowNetProfit = dowGrossProfit - dowTotalCosts;
 
+    // Calculate metrics for NASDAQ
+    $: nasdaqShares = investmentAmount / nasdaqData[0].value;
+    $: nasdaqFinalValue = nasdaqShares * nasdaqData[nasdaqData.length - 1].value;
+    $: nasdaqGrossProfit = nasdaqFinalValue - investmentAmount;
+    
+    // NASDAQ Buy fees
+    $: nasdaqBuyTransactionTax = investmentAmount * TRANSACTION_TAX;
+    $: nasdaqBuyBrokerFee = investmentAmount * BROKER_FEE;
+    $: nasdaqBuyMarketFee = investmentAmount * MARKET_ACCESS_FEE;
+    $: nasdaqBuyExchangeFee = investmentAmount * EXCHANGE_FEE;
+    $: nasdaqTotalBuyFees = nasdaqBuyTransactionTax + nasdaqBuyBrokerFee + nasdaqBuyMarketFee + nasdaqBuyExchangeFee;
+
+    // NASDAQ Sell fees
+    $: nasdaqSellTransactionTax = nasdaqFinalValue * TRANSACTION_TAX;
+    $: nasdaqSellBrokerFee = nasdaqFinalValue * BROKER_FEE;
+    $: nasdaqSellMarketFee = nasdaqFinalValue * MARKET_ACCESS_FEE;
+    $: nasdaqSellExchangeFee = nasdaqFinalValue * EXCHANGE_FEE;
+    $: nasdaqTotalSellFees = nasdaqSellTransactionTax + nasdaqSellBrokerFee + nasdaqSellMarketFee + nasdaqSellExchangeFee;
+
+    // NASDAQ Capital gains tax
+    $: nasdaqCapitalGainsTax = nasdaqGrossProfit > 0 ? nasdaqGrossProfit * CAPITAL_GAINS_TAX : 0;
+    
+    // NASDAQ Custody fees (monthly)
+    $: nasdaqCustodyFees = CUSTODY_FEE_MONTHLY * monthsDiff;
+
+    $: nasdaqTotalFees = nasdaqTotalBuyFees + nasdaqTotalSellFees + nasdaqCustodyFees;
+    $: nasdaqTotalTaxes = nasdaqCapitalGainsTax;
+    $: nasdaqTotalCosts = nasdaqTotalFees + nasdaqTotalTaxes;
+    $: nasdaqNetProfit = nasdaqGrossProfit - nasdaqTotalCosts;
+
     // Calculate combined portfolio metrics
-    $: totalInvestment = investmentAmount * 2;
-    $: totalFinalValue = sp500FinalValue + dowFinalValue;
-    $: totalGrossProfit = sp500GrossProfit + dowGrossProfit;
-    $: totalFees = sp500TotalFees + dowTotalFees;
-    $: totalTaxes = sp500TotalTaxes + dowTotalTaxes;
-    $: totalCosts = sp500TotalCosts + dowTotalCosts;
-    $: totalNetProfit = sp500NetProfit + dowNetProfit;
+    $: totalInvestment = investmentAmount * 3; // Updated for 3 indices
+    $: totalFinalValue = sp500FinalValue + dowFinalValue + nasdaqFinalValue;
+    $: totalGrossProfit = sp500GrossProfit + dowGrossProfit + nasdaqGrossProfit;
+    $: totalFees = sp500TotalFees + dowTotalFees + nasdaqTotalFees;
+    $: totalTaxes = sp500TotalTaxes + dowTotalTaxes + nasdaqTotalTaxes;
+    $: totalCosts = sp500TotalCosts + dowTotalCosts + nasdaqTotalCosts;
+    $: totalNetProfit = sp500NetProfit + dowNetProfit + nasdaqNetProfit;
     $: totalReturnPercentage = (totalNetProfit / totalInvestment) * 100;
 
     function formatCurrency(value: number): string {
@@ -129,6 +160,7 @@
     let visibleStocks = {
         sp500Index: true,
         dowIndex: true,
+        nasdaqIndex: true,
         totalPortfolio: true
     };
 
@@ -155,22 +187,43 @@
         let lastMonthValue = totalInvestment;
         let currentMonth = '';
 
-        sp500Data.forEach((data, i) => {
-            const date = new Date(data.date);
-            const month = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-            
-            if (month !== currentMonth) {
-                if (currentMonth) {
-                    const totalValue = (sp500Shares * data.value) + (dowShares * dowData[i].value);
-                    const monthReturn = ((totalValue - lastMonthValue) / lastMonthValue) * 100;
-                    monthlyData.push({ date: currentMonth, return: monthReturn });
-                    lastMonthValue = totalValue;
+        sp500Data
+            .filter(d => d.date <= '2024-12-31')
+            .forEach((data, i) => {
+                const date = new Date(data.date);
+                const month = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+                
+                if (month !== currentMonth) {
+                    if (currentMonth) {
+                        const totalValue = (sp500Shares * data.value) + 
+                                         (dowShares * dowData[i].value) + 
+                                         (nasdaqShares * nasdaqData[i].value);
+                        const monthReturn = ((totalValue - lastMonthValue) / lastMonthValue) * 100;
+                        monthlyData.push({ date: currentMonth, return: monthReturn });
+                        lastMonthValue = totalValue;
+                    }
+                    currentMonth = month;
                 }
-                currentMonth = month;
-            }
-        });
+            });
 
         return monthlyData;
+    }
+
+    function calculateCumulativeReturns() {
+        const cumulativeData: { date: string; return: number }[] = [];
+        const initialValue = totalInvestment;
+
+        sp500Data
+            .filter(d => d.date <= '2024-12-31')
+            .forEach((data, i) => {
+                const totalValue = (sp500Shares * data.value) + 
+                                 (dowShares * dowData[i].value) + 
+                                 (nasdaqShares * nasdaqData[i].value);
+                const cumulativeReturn = ((totalValue - initialValue) / initialValue) * 100;
+                cumulativeData.push({ date: data.date, return: cumulativeReturn });
+            });
+
+        return cumulativeData;
     }
 
     interface CumulativeDataPoint {
@@ -184,75 +237,109 @@
     function updateChart() {
         if (!browser) return;
         
+        console.log('Updating chart:', graphType);
+        console.log('Data lengths:', {
+            sp500: sp500Data?.length,
+            dow: dowData?.length,
+            nasdaq: nasdaqData?.length
+        });
+
         if (chart) {
+            console.log('Destroying existing chart');
             chart.destroy();
         }
 
-        const ctx = document.getElementById(graphType === 'tax-breakdown' ? 'costDistributionChart' : 'indexChart');
-        if (!(ctx instanceof HTMLCanvasElement)) return;
+        const canvasId = graphType === 'tax-breakdown' ? 'costDistributionChart' : 'indexChart';
+        console.log('Looking for canvas with ID:', canvasId);
+        
+        const ctx = document.getElementById(canvasId);
+        if (!(ctx instanceof HTMLCanvasElement)) {
+            console.error('Canvas element not found:', canvasId);
+            // Wait a bit and try again
+            setTimeout(updateChart, 100);
+            return;
+        }
 
         if (graphType === 'tax-breakdown') {
-            const totalTransactionTax = sp500BuyTransactionTax + sp500SellTransactionTax + dowBuyTransactionTax + dowSellTransactionTax;
-            const totalCapitalGainsTax = sp500CapitalGainsTax + dowCapitalGainsTax;
-            const totalBrokerageFees = sp500BuyBrokerFee + sp500SellBrokerFee + dowBuyBrokerFee + dowSellBrokerFee;
+            console.log('Rendering tax breakdown chart');
+            const taxData = [
+                { label: 'Imposto do Selo (Compra)', value: sp500BuyTransactionTax + dowBuyTransactionTax + nasdaqBuyTransactionTax },
+                { label: 'Imposto do Selo (Venda)', value: sp500SellTransactionTax + dowSellTransactionTax + nasdaqSellTransactionTax },
+                { label: 'Comissões do Broker', value: sp500BuyBrokerFee + dowBuyBrokerFee + nasdaqBuyBrokerFee + sp500SellBrokerFee + dowSellBrokerFee + nasdaqSellBrokerFee },
+                { label: 'Taxas de Mercado', value: sp500BuyMarketFee + dowBuyMarketFee + nasdaqBuyMarketFee + sp500SellMarketFee + dowSellMarketFee + nasdaqSellMarketFee },
+                { label: 'Taxas de Bolsa', value: sp500BuyExchangeFee + dowBuyExchangeFee + nasdaqBuyExchangeFee + sp500SellExchangeFee + dowSellExchangeFee + nasdaqSellExchangeFee },
+                { label: 'Taxa de Custódia', value: sp500CustodyFees + dowCustodyFees + nasdaqCustodyFees },
+                { label: 'Imposto Mais-Valias', value: sp500CapitalGainsTax + dowCapitalGainsTax + nasdaqCapitalGainsTax }
+            ];
 
-            const chartData = {
-                labels: ['Impostos de Transação', 'Impostos sobre Lucros', 'Custos de Corretagem'],
-                datasets: [{
-                    data: [totalTransactionTax, totalCapitalGainsTax, totalBrokerageFees],
-                    backgroundColor: [
-                        'rgba(255, 99, 132, 0.8)',
-                        'rgba(54, 162, 235, 0.8)',
-                        'rgba(255, 206, 86, 0.8)'
-                    ],
-                    borderColor: [
-                        'rgba(255, 99, 132, 1)',
-                        'rgba(54, 162, 235, 1)',
-                        'rgba(255, 206, 86, 1)'
-                    ],
-                    borderWidth: 1
-                }]
-            };
+            console.log('Tax data:', taxData);
 
-            chart = new Chart(ctx, {
-                type: 'pie',
-                data: chartData,
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        legend: {
-                            position: 'bottom',
-                            labels: {
-                                color: 'white'
-                            }
-                        },
-                        title: {
-                            display: true,
-                            text: 'Distribuição de Custos',
-                            color: 'white',
-                            font: {
-                                size: 16
+            try {
+                chart = new Chart(ctx, {
+                    type: 'doughnut',
+                    data: {
+                        labels: taxData.map(d => d.label),
+                        datasets: [{
+                            data: taxData.map(d => d.value),
+                            backgroundColor: [
+                                'rgba(239, 68, 68, 0.7)',  // red
+                                'rgba(249, 115, 22, 0.7)', // orange
+                                'rgba(234, 179, 8, 0.7)',  // yellow
+                                'rgba(16, 185, 129, 0.7)', // emerald
+                                'rgba(59, 130, 246, 0.7)', // blue
+                                'rgba(168, 85, 247, 0.7)', // purple
+                                'rgba(236, 72, 153, 0.7)'  // pink
+                            ]
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            tooltip: {
+                                callbacks: {
+                                    label: (context: any) => `${context.label}: ${formatCurrency(context.raw)}`
+                                }
+                            },
+                            legend: {
+                                position: 'right',
+                                labels: {
+                                    color: 'white',
+                                    padding: 20,
+                                    font: {
+                                        size: 12
+                                    }
+                                }
                             }
                         }
                     }
-                }
-            });
-        } else if (graphType === 'performance') {
-            const labels = sp500Data.map(d => formatDate(d.date));
+                });
+                console.log('Tax breakdown chart created successfully');
+            } catch (error) {
+                console.error('Error creating tax breakdown chart:', error);
+            }
+        } else if (graphType === 'performance' && sp500Data?.length && dowData?.length && nasdaqData?.length) {
+            console.log('Rendering performance chart');
+            // Filter data to end at 2024-12-31
+            const endDate = '2024-12-31';
+            const filteredSP500Data = sp500Data.filter(d => d.date <= endDate);
+            const filteredDowData = dowData.filter(d => d.date <= endDate);
+            const filteredNasdaqData = nasdaqData.filter(d => d.date <= endDate);
+
+            const labels = filteredSP500Data.map(d => formatDate(d.date));
             let datasets = [];
 
-            // Color scheme
             const colors = {
                 sp500: 'rgb(59, 130, 246)', // blue-500
                 dow: 'rgb(16, 185, 129)',   // emerald-500
+                nasdaq: 'rgb(236, 72, 153)', // pink-500
                 portfolio: 'rgb(168, 85, 247)' // purple-600
             };
 
             if (visibleStocks.sp500Index) {
                 datasets.push({
                     label: 'S&P 500',
-                    data: sp500Data.map(d => d.value),
+                    data: filteredSP500Data.map(d => d.value),
                     borderColor: colors.sp500,
                     borderWidth: 2,
                     tension: 0.1,
@@ -263,8 +350,19 @@
             if (visibleStocks.dowIndex) {
                 datasets.push({
                     label: 'Dow Jones',
-                    data: dowData.map(d => d.value),
+                    data: filteredDowData.map(d => d.value),
                     borderColor: colors.dow,
+                    borderWidth: 2,
+                    tension: 0.1,
+                    fill: false
+                });
+            }
+
+            if (visibleStocks.nasdaqIndex) {
+                datasets.push({
+                    label: 'NASDAQ',
+                    data: filteredNasdaqData.map(d => d.value),
+                    borderColor: colors.nasdaq,
                     borderWidth: 2,
                     tension: 0.1,
                     fill: false
@@ -274,7 +372,12 @@
             if (visibleStocks.totalPortfolio) {
                 datasets.push({
                     label: 'Carteira Total',
-                    data: sp500Data.map((d, i) => (sp500Shares * d.value) + (dowShares * dowData[i].value)),
+                    data: filteredSP500Data.map((d, i) => {
+                        if (filteredDowData[i] && filteredNasdaqData[i]) {
+                            return (sp500Shares * d.value) + (dowShares * filteredDowData[i].value) + (nasdaqShares * filteredNasdaqData[i].value);
+                        }
+                        return 0;
+                    }),
                     borderColor: colors.portfolio,
                     borderWidth: 3,
                     tension: 0.1,
@@ -282,62 +385,163 @@
                 });
             }
 
-            chart = new Chart(ctx, {
-                type: 'line',
-                data: { labels, datasets },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    interaction: {
-                        mode: 'nearest',
-                        intersect: true,
-                        axis: 'x'
-                    },
-                    scales: {
-                        y: {
-                            type: 'linear',
-                            beginAtZero: false,
-                            ticks: {
-                                callback: function(this: any, tickValue: string | number) {
-                                    if (typeof tickValue === 'number') {
-                                        return formatCurrency(tickValue);
+            console.log('Performance datasets:', datasets);
+
+            try {
+                chart = new Chart(ctx, {
+                    type: 'line',
+                    data: { labels, datasets },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        interaction: {
+                            mode: 'nearest',
+                            intersect: true,
+                            axis: 'x'
+                        },
+                        scales: {
+                            y: {
+                                type: 'linear',
+                                beginAtZero: false,
+                                ticks: {
+                                    callback: function(this: any, value: string | number) {
+                                        if (typeof value === 'number') {
+                                            return formatCurrency(value);
+                                        }
+                                        return value;
                                     }
-                                    return tickValue;
-                                }
-                            }
-                        }
-                    },
-                    plugins: {
-                        tooltip: {
-                            callbacks: {
-                                label: function(context: any) {
-                                    const label = context.dataset.label || '';
-                                    const value = context.parsed.y;
-                                    const initialValue = context.dataset.data[0];
-                                    const growth = calculateGrowth(value, initialValue);
-                                    const growthText = growth.relative >= 0 ? '+' : '';
-                                    
-                                    return [
-                                        `${label}: ${formatCurrency(value)}`,
-                                        `Crescimento: ${growthText}${formatPercentage(growth.relative / 100)}`
-                                    ];
                                 }
                             }
                         },
-                        legend: {
-                            display: true,
-                            position: 'top',
-                            labels: {
-                                usePointStyle: true,
-                                padding: 20,
-                                font: {
-                                    size: 12
+                        plugins: {
+                            tooltip: {
+                                callbacks: {
+                                    label: function(context: any) {
+                                        const label = context.dataset.label || '';
+                                        const value = context.parsed.y;
+                                        const initialValue = context.dataset.data[0];
+                                        const growth = calculateGrowth(value, initialValue);
+                                        const growthText = growth.relative >= 0 ? '+' : '';
+                                        
+                                        return [
+                                            `${label}: ${formatCurrency(value)}`,
+                                            `Crescimento: ${growthText}${formatPercentage(growth.relative / 100)}`
+                                        ];
+                                    }
+                                }
+                            },
+                            legend: {
+                                display: true,
+                                position: 'top',
+                                labels: {
+                                    usePointStyle: true,
+                                    padding: 20,
+                                    font: {
+                                        size: 12
+                                    }
                                 }
                             }
                         }
                     }
-                }
-            });
+                });
+                console.log('Performance chart created successfully');
+            } catch (error) {
+                console.error('Error creating performance chart:', error);
+            }
+        } else if (graphType === 'monthly-returns') {
+            console.log('Rendering monthly returns chart');
+            const monthlyData = calculateMonthlyReturns();
+            console.log('Monthly returns data:', monthlyData);
+
+            try {
+                chart = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: monthlyData.map(d => d.date),
+                        datasets: [{
+                            label: 'Retorno Mensal',
+                            data: monthlyData.map(d => d.return),
+                            backgroundColor: monthlyData.map(d => d.return >= 0 ? 'rgba(16, 185, 129, 0.7)' : 'rgba(239, 68, 68, 0.7)'),
+                            borderColor: monthlyData.map(d => d.return >= 0 ? 'rgb(16, 185, 129)' : 'rgb(239, 68, 68)'),
+                            borderWidth: 1
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                ticks: {
+                                    callback: function(this: any, value: string | number) {
+                                        if (typeof value === 'number') {
+                                            return formatPercentage(value / 100);
+                                        }
+                                        return value;
+                                    }
+                                }
+                            }
+                        },
+                        plugins: {
+                            tooltip: {
+                                callbacks: {
+                                    label: (context: any) => `Retorno: ${formatPercentage(context.raw / 100)}`
+                                }
+                            }
+                        }
+                    }
+                });
+                console.log('Monthly returns chart created successfully');
+            } catch (error) {
+                console.error('Error creating monthly returns chart:', error);
+            }
+        } else if (graphType === 'cumulative-returns') {
+            console.log('Rendering cumulative returns chart');
+            const cumulativeData = calculateCumulativeReturns();
+            console.log('Cumulative returns data:', cumulativeData);
+
+            try {
+                chart = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: cumulativeData.map(d => formatDate(d.date)),
+                        datasets: [{
+                            label: 'Retorno Acumulado',
+                            data: cumulativeData.map(d => d.return),
+                            borderColor: 'rgb(168, 85, 247)',
+                            borderWidth: 2,
+                            tension: 0.1,
+                            fill: false
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            y: {
+                                ticks: {
+                                    callback: function(this: any, value: string | number) {
+                                        if (typeof value === 'number') {
+                                            return formatPercentage(value / 100);
+                                        }
+                                        return value;
+                                    }
+                                }
+                            }
+                        },
+                        plugins: {
+                            tooltip: {
+                                callbacks: {
+                                    label: (context: any) => `Retorno: ${formatPercentage(context.raw / 100)}`
+                                }
+                            }
+                        }
+                    }
+                });
+                console.log('Cumulative returns chart created successfully');
+            } catch (error) {
+                console.error('Error creating cumulative returns chart:', error);
+            }
         }
     }
 
@@ -430,6 +634,15 @@
                         <label class="flex items-center space-x-2">
                             <input
                                 type="checkbox"
+                                bind:checked={visibleStocks.nasdaqIndex}
+                                on:change={updateChart}
+                                class="form-checkbox text-purple-600"
+                            />
+                            <span class="text-sm whitespace-nowrap text-purple-400 font-medium">NASDAQ</span>
+                        </label>
+                        <label class="flex items-center space-x-2">
+                            <input
+                                type="checkbox"
                                 bind:checked={visibleStocks.totalPortfolio}
                                 on:change={updateChart}
                                 class="form-checkbox text-purple-600"
@@ -452,6 +665,7 @@
                     <div class="pl-4 mt-2 space-y-1">
                         <p>S&P 500: {formatCurrency(investmentAmount)}</p>
                         <p>Dow Jones: {formatCurrency(investmentAmount)}</p>
+                        <p>NASDAQ: {formatCurrency(investmentAmount)}</p>
                     </div>
                 </div>
 
@@ -460,6 +674,7 @@
                     <div class="pl-4 mt-2 space-y-1">
                         <p>S&P 500: {formatCurrency(sp500FinalValue)}</p>
                         <p>Dow Jones: {formatCurrency(dowFinalValue)}</p>
+                        <p>NASDAQ: {formatCurrency(nasdaqFinalValue)}</p>
                     </div>
                 </div>
 
@@ -468,6 +683,7 @@
                     <div class="pl-4 mt-2 space-y-1">
                         <p>S&P 500: {formatCurrency(sp500GrossProfit)}</p>
                         <p>Dow Jones: {formatCurrency(dowGrossProfit)}</p>
+                        <p>NASDAQ: {formatCurrency(nasdaqGrossProfit)}</p>
                     </div>
                 </div>
 
@@ -477,27 +693,27 @@
                     <div class="pl-4 mt-2">
                         <h4 class="font-medium">Custos de Compra</h4>
                         <div class="pl-4 space-y-1 text-sm">
-                            <p>Imposto do Selo: {formatCurrency(sp500BuyTransactionTax + dowBuyTransactionTax)}</p>
-                            <p>Comissão do Broker: {formatCurrency(sp500BuyBrokerFee + dowBuyBrokerFee)}</p>
-                            <p>Taxa de Acesso ao Mercado: {formatCurrency(sp500BuyMarketFee + dowBuyMarketFee)}</p>
-                            <p>Taxa de Bolsa: {formatCurrency(sp500BuyExchangeFee + dowBuyExchangeFee)}</p>
+                            <p>Imposto do Selo: {formatCurrency(sp500BuyTransactionTax + dowBuyTransactionTax + nasdaqBuyTransactionTax)}</p>
+                            <p>Comissão do Broker: {formatCurrency(sp500BuyBrokerFee + dowBuyBrokerFee + nasdaqBuyBrokerFee)}</p>
+                            <p>Taxa de Acesso ao Mercado: {formatCurrency(sp500BuyMarketFee + dowBuyMarketFee + nasdaqBuyMarketFee)}</p>
+                            <p>Taxa de Bolsa: {formatCurrency(sp500BuyExchangeFee + dowBuyExchangeFee + nasdaqBuyExchangeFee)}</p>
                         </div>
                     </div>
 
                     <div class="pl-4 mt-2">
                         <h4 class="font-medium">Custos de Venda</h4>
                         <div class="pl-4 space-y-1 text-sm">
-                            <p>Imposto do Selo: {formatCurrency(sp500SellTransactionTax + dowSellTransactionTax)}</p>
-                            <p>Comissão do Broker: {formatCurrency(sp500SellBrokerFee + dowSellBrokerFee)}</p>
-                            <p>Taxa de Acesso ao Mercado: {formatCurrency(sp500SellMarketFee + dowSellMarketFee)}</p>
-                            <p>Taxa de Bolsa: {formatCurrency(sp500SellExchangeFee + dowSellExchangeFee)}</p>
+                            <p>Imposto do Selo: {formatCurrency(sp500SellTransactionTax + dowSellTransactionTax + nasdaqSellTransactionTax)}</p>
+                            <p>Comissão do Broker: {formatCurrency(sp500SellBrokerFee + dowSellBrokerFee + nasdaqSellBrokerFee)}</p>
+                            <p>Taxa de Acesso ao Mercado: {formatCurrency(sp500SellMarketFee + dowSellMarketFee + nasdaqSellMarketFee)}</p>
+                            <p>Taxa de Bolsa: {formatCurrency(sp500SellExchangeFee + dowSellExchangeFee + nasdaqSellExchangeFee)}</p>
                         </div>
                     </div>
 
                     <div class="pl-4 mt-2">
                         <h4 class="font-medium">Custos de Manutenção</h4>
                         <div class="pl-4 space-y-1 text-sm">
-                            <p>Taxa de Custódia ({monthsDiff} meses): {formatCurrency(sp500CustodyFees + dowCustodyFees)}</p>
+                            <p>Taxa de Custódia ({monthsDiff} meses): {formatCurrency(sp500CustodyFees + dowCustodyFees + nasdaqCustodyFees)}</p>
                         </div>
                     </div>
 
@@ -506,6 +722,7 @@
                         <div class="pl-4 space-y-1 text-sm">
                             <p>S&P 500 (28%): {formatCurrency(sp500CapitalGainsTax)}</p>
                             <p>Dow Jones (28%): {formatCurrency(dowCapitalGainsTax)}</p>
+                            <p>NASDAQ (28%): {formatCurrency(nasdaqCapitalGainsTax)}</p>
                         </div>
                     </div>
 
@@ -558,11 +775,11 @@
                 </button>
             </div>
         </div>
-        <div class="h-[600px]">
+        <div class="h-[600px] relative">
             {#if graphType === 'tax-breakdown'}
-                <canvas id="costDistributionChart"></canvas>
+                <canvas id="costDistributionChart" class="w-full h-full"></canvas>
             {:else}
-                <canvas id="indexChart"></canvas>
+                <canvas id="indexChart" class="w-full h-full"></canvas>
             {/if}
         </div>
     </div>
@@ -575,22 +792,22 @@
                 <div class="pl-4 space-y-2">
                     <p>
                         <span class="font-medium">Imposto do Selo:</span> 
-                        <span class="text-gray-300">0.2% sobre o valor da transação ({formatCurrency(sp500BuyTransactionTax + dowBuyTransactionTax)} na compra, {formatCurrency(sp500SellTransactionTax + dowSellTransactionTax)} na venda)</span>
+                        <span class="text-gray-300">0.2% sobre o valor da transação ({formatCurrency(sp500BuyTransactionTax + dowBuyTransactionTax + nasdaqBuyTransactionTax)} na compra, {formatCurrency(sp500SellTransactionTax + dowSellTransactionTax + nasdaqSellTransactionTax)} na venda)</span>
                         <span class="block text-sm text-gray-400">Aplicado na compra ({formatCurrency(totalInvestment)} × 0.2%) e venda ({formatCurrency(totalFinalValue)} × 0.2%)</span>
                     </p>
                     <p>
                         <span class="font-medium">Comissão do Broker:</span>
-                        <span class="text-gray-300">0.25% sobre o valor da transação ({formatCurrency(sp500BuyBrokerFee + dowBuyBrokerFee + sp500SellBrokerFee + dowSellBrokerFee)} total)</span>
+                        <span class="text-gray-300">0.25% sobre o valor da transação ({formatCurrency(sp500BuyBrokerFee + dowBuyBrokerFee + nasdaqBuyBrokerFee + sp500SellBrokerFee + dowSellBrokerFee + nasdaqSellBrokerFee)} total)</span>
                         <span class="block text-sm text-gray-400">Aplicado na compra ({formatCurrency(totalInvestment)} × 0.25%) e venda ({formatCurrency(totalFinalValue)} × 0.25%)</span>
                     </p>
                     <p>
                         <span class="font-medium">Taxa de Acesso ao Mercado:</span>
-                        <span class="text-gray-300">0.05% sobre o valor da transação ({formatCurrency(sp500BuyMarketFee + dowBuyMarketFee + sp500SellMarketFee + dowSellMarketFee)} total)</span>
+                        <span class="text-gray-300">0.05% sobre o valor da transação ({formatCurrency(sp500BuyMarketFee + dowBuyMarketFee + nasdaqBuyMarketFee + sp500SellMarketFee + dowSellMarketFee + nasdaqSellMarketFee)} total)</span>
                         <span class="block text-sm text-gray-400">Aplicado na compra ({formatCurrency(totalInvestment)} × 0.05%) e venda ({formatCurrency(totalFinalValue)} × 0.05%)</span>
                     </p>
                     <p>
                         <span class="font-medium">Taxa de Bolsa:</span>
-                        <span class="text-gray-300">0.02% sobre o valor da transação ({formatCurrency(sp500BuyExchangeFee + dowBuyExchangeFee + sp500SellExchangeFee + dowSellExchangeFee)} total)</span>
+                        <span class="text-gray-300">0.02% sobre o valor da transação ({formatCurrency(sp500BuyExchangeFee + dowBuyExchangeFee + nasdaqBuyExchangeFee + sp500SellExchangeFee + dowSellExchangeFee + nasdaqSellExchangeFee)} total)</span>
                         <span class="block text-sm text-gray-400">Aplicado na compra ({formatCurrency(totalInvestment)} × 0.02%) e venda ({formatCurrency(totalFinalValue)} × 0.02%)</span>
                     </p>
                 </div>
@@ -601,7 +818,7 @@
                 <div class="pl-4">
                     <p>
                         <span class="font-medium">Taxa de Custódia:</span>
-                        <span class="text-gray-300">€2.00 por mês ({formatCurrency(sp500CustodyFees + dowCustodyFees)} total)</span>
+                        <span class="text-gray-300">€2.00 por mês ({formatCurrency(sp500CustodyFees + dowCustodyFees + nasdaqCustodyFees)} total)</span>
                         <span class="block text-sm text-gray-400">Valor fixo de €2.00 × {monthsDiff} meses</span>
                     </p>
                 </div>
@@ -612,7 +829,7 @@
                 <div class="pl-4">
                     <p>
                         <span class="font-medium">IRS sobre Mais-Valias:</span>
-                        <span class="text-gray-300">28% sobre o lucro ({formatCurrency(sp500CapitalGainsTax + dowCapitalGainsTax)} total)</span>
+                        <span class="text-gray-300">28% sobre o lucro ({formatCurrency(sp500CapitalGainsTax + dowCapitalGainsTax + nasdaqCapitalGainsTax)} total)</span>
                         <span class="block text-sm text-gray-400">Aplicado sobre o lucro total ({formatCurrency(totalGrossProfit)} × 28%)</span>
                     </p>
                 </div>
