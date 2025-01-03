@@ -11,7 +11,7 @@ const config = {
             strict: true
         }),
         paths: {
-            base: '/stocks' // Replace 'stocks' with your repository name
+            base: '/StonksSimulator'
         }
     }
 };
