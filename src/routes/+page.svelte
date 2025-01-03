@@ -7,14 +7,61 @@
     import type { ChartEvent } from 'chart.js';
 
     let selectedYear = '2024';
-    let investmentAmount = 10000;
+    let investments = {
+        sp500: 10000,
+        dow: 10000,
+        nasdaq: 10000
+    };
     let chart: Chart | null = null;
-    let viewMode: 'SP500' | 'DOW' | 'COMBINED' = 'COMBINED';
+    let viewMode: 'SP500' | 'DOW' | 'NASDAQ' | 'COMBINED' = 'COMBINED';
+
+    let editingIndex: string | null = null;
+    let tempInvestmentAmount = 0;
+    let inputError: string | null = null;
+
+    function startEditing(index: string) {
+        editingIndex = index;
+        tempInvestmentAmount = investments[index as keyof typeof investments];
+        inputError = null;
+    }
+
+    function validateInvestment(amount: number): boolean {
+        if (isNaN(amount) || amount < 0) {
+            inputError = "O valor do investimento deve ser um número positivo";
+            return false;
+        }
+        if (amount > 1000000000) {
+            inputError = "O valor do investimento não pode exceder 1 bilhão";
+            return false;
+        }
+        inputError = null;
+        return true;
+    }
+
+    function saveEdit() {
+        if (editingIndex && validateInvestment(tempInvestmentAmount)) {
+            investments[editingIndex as keyof typeof investments] = tempInvestmentAmount;
+            editingIndex = null;
+            updateChart();
+        }
+    }
+
+    function cancelEdit() {
+        editingIndex = null;
+        inputError = null;
+    }
+
+    function deleteInvestment(index: string) {
+        if (index === 'sp500' || index === 'dow' || index === 'nasdaq') {
+            investments[index] = 0;
+            updateChart();
+        }
+    }
 
     $: historicalData = selectedYear === '2024' ? $historical2024Data : $historical2025Data;
-    $: sp500Data = [...historicalData.SP500].reverse();
-    $: dowData = [...historicalData.DOW].reverse();
-    $: nasdaqData = [...historicalData.NASDAQ].reverse();
+    $: sp500Data = [...historicalData.SP500];
+    $: dowData = [...historicalData.DOW];
+    $: nasdaqData = [...historicalData.NASDAQ];
     
     // Portuguese tax rates and fees
     const TRANSACTION_TAX = 0.002; // 0.2% Imposto do Selo
@@ -24,16 +71,29 @@
     const MARKET_ACCESS_FEE = 0.0005; // 0.05% taxa de acesso ao mercado
     const EXCHANGE_FEE = 0.0002; // 0.02% taxa de bolsa
 
+    // Update all investment amount calculations to use the new investments object
+    $: investmentAmount = viewMode === 'SP500' ? investments.sp500 : 
+                         viewMode === 'DOW' ? investments.dow :
+                         viewMode === 'NASDAQ' ? investments.nasdaq :
+                         Math.max(...Object.values(investments));
+
+    // Calculate total investment based on view mode
+    $: totalInvestment = viewMode === 'COMBINED' ? 
+        Object.values(investments).reduce((a, b) => a + b, 0) :
+        viewMode === 'SP500' ? investments.sp500 :
+        viewMode === 'DOW' ? investments.dow :
+        investments.nasdaq;
+
     // Calculate metrics for S&P 500
-    $: sp500Shares = investmentAmount / sp500Data[0].value;
+    $: sp500Shares = investments.sp500 / sp500Data[0].value;
     $: sp500FinalValue = sp500Shares * sp500Data[sp500Data.length - 1].value;
-    $: sp500GrossProfit = sp500FinalValue - investmentAmount;
+    $: sp500GrossProfit = sp500FinalValue - investments.sp500;
     
     // S&P 500 Buy fees
-    $: sp500BuyTransactionTax = investmentAmount * TRANSACTION_TAX;
-    $: sp500BuyBrokerFee = investmentAmount * BROKER_FEE;
-    $: sp500BuyMarketFee = investmentAmount * MARKET_ACCESS_FEE;
-    $: sp500BuyExchangeFee = investmentAmount * EXCHANGE_FEE;
+    $: sp500BuyTransactionTax = investments.sp500 * TRANSACTION_TAX;
+    $: sp500BuyBrokerFee = investments.sp500 * BROKER_FEE;
+    $: sp500BuyMarketFee = investments.sp500 * MARKET_ACCESS_FEE;
+    $: sp500BuyExchangeFee = investments.sp500 * EXCHANGE_FEE;
     $: sp500TotalBuyFees = sp500BuyTransactionTax + sp500BuyBrokerFee + sp500BuyMarketFee + sp500BuyExchangeFee;
 
     // S&P 500 Sell fees
@@ -56,15 +116,15 @@
     $: sp500NetProfit = sp500GrossProfit - sp500TotalCosts;
 
     // Calculate metrics for Dow Jones (similar structure)
-    $: dowShares = investmentAmount / dowData[0].value;
+    $: dowShares = investments.dow / dowData[0].value;
     $: dowFinalValue = dowShares * dowData[dowData.length - 1].value;
-    $: dowGrossProfit = dowFinalValue - investmentAmount;
+    $: dowGrossProfit = dowFinalValue - investments.dow;
     
     // Dow Jones Buy fees
-    $: dowBuyTransactionTax = investmentAmount * TRANSACTION_TAX;
-    $: dowBuyBrokerFee = investmentAmount * BROKER_FEE;
-    $: dowBuyMarketFee = investmentAmount * MARKET_ACCESS_FEE;
-    $: dowBuyExchangeFee = investmentAmount * EXCHANGE_FEE;
+    $: dowBuyTransactionTax = investments.dow * TRANSACTION_TAX;
+    $: dowBuyBrokerFee = investments.dow * BROKER_FEE;
+    $: dowBuyMarketFee = investments.dow * MARKET_ACCESS_FEE;
+    $: dowBuyExchangeFee = investments.dow * EXCHANGE_FEE;
     $: dowTotalBuyFees = dowBuyTransactionTax + dowBuyBrokerFee + dowBuyMarketFee + dowBuyExchangeFee;
 
     // Dow Jones Sell fees
@@ -86,15 +146,15 @@
     $: dowNetProfit = dowGrossProfit - dowTotalCosts;
 
     // Calculate metrics for NASDAQ
-    $: nasdaqShares = investmentAmount / nasdaqData[0].value;
+    $: nasdaqShares = investments.nasdaq / nasdaqData[0].value;
     $: nasdaqFinalValue = nasdaqShares * nasdaqData[nasdaqData.length - 1].value;
-    $: nasdaqGrossProfit = nasdaqFinalValue - investmentAmount;
+    $: nasdaqGrossProfit = nasdaqFinalValue - investments.nasdaq;
     
     // NASDAQ Buy fees
-    $: nasdaqBuyTransactionTax = investmentAmount * TRANSACTION_TAX;
-    $: nasdaqBuyBrokerFee = investmentAmount * BROKER_FEE;
-    $: nasdaqBuyMarketFee = investmentAmount * MARKET_ACCESS_FEE;
-    $: nasdaqBuyExchangeFee = investmentAmount * EXCHANGE_FEE;
+    $: nasdaqBuyTransactionTax = investments.nasdaq * TRANSACTION_TAX;
+    $: nasdaqBuyBrokerFee = investments.nasdaq * BROKER_FEE;
+    $: nasdaqBuyMarketFee = investments.nasdaq * MARKET_ACCESS_FEE;
+    $: nasdaqBuyExchangeFee = investments.nasdaq * EXCHANGE_FEE;
     $: nasdaqTotalBuyFees = nasdaqBuyTransactionTax + nasdaqBuyBrokerFee + nasdaqBuyMarketFee + nasdaqBuyExchangeFee;
 
     // NASDAQ Sell fees
@@ -116,7 +176,6 @@
     $: nasdaqNetProfit = nasdaqGrossProfit - nasdaqTotalCosts;
 
     // Calculate combined portfolio metrics
-    $: totalInvestment = investmentAmount * 3; // Updated for 3 indices
     $: totalFinalValue = sp500FinalValue + dowFinalValue + nasdaqFinalValue;
     $: totalGrossProfit = sp500GrossProfit + dowGrossProfit + nasdaqGrossProfit;
     $: totalFees = sp500TotalFees + dowTotalFees + nasdaqTotalFees;
@@ -158,7 +217,7 @@
     }
 
     let visibleStocks = {
-        sp500Index: true,
+        sp500Index: false,
         dowIndex: true,
         nasdaqIndex: true,
         totalPortfolio: true
@@ -184,44 +243,60 @@
     // Calculate monthly returns
     function calculateMonthlyReturns() {
         const monthlyData: { date: string; return: number }[] = [];
-        let lastMonthValue = totalInvestment;
-        let currentMonth = '';
+        let lastMonthValue: number | null = null;
+        
+        // Filter data for the selected year only
+        const yearEndDate = selectedYear === '2024' ? '2024-12-31' : '2025-12-31';
+        const yearStartDate = selectedYear === '2024' ? '2024-01-01' : '2025-01-01';
+        
+        const filteredData = sp500Data.filter(d => d.date >= yearStartDate && d.date <= yearEndDate);
+        const monthGroups = new Map<string, { lastDay: any, value: number }>();
 
-        sp500Data
-            .filter(d => d.date <= '2024-12-31')
-            .forEach((data, i) => {
-                const date = new Date(data.date);
-                const month = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-                
-                if (month !== currentMonth) {
-                    if (currentMonth) {
-                        const totalValue = (sp500Shares * data.value) + 
-                                         (dowShares * dowData[i].value) + 
-                                         (nasdaqShares * nasdaqData[i].value);
-                        const monthReturn = ((totalValue - lastMonthValue) / lastMonthValue) * 100;
-                        monthlyData.push({ date: currentMonth, return: monthReturn });
-                        lastMonthValue = totalValue;
-                    }
-                    currentMonth = month;
-                }
+        // Group data by month and keep the last day's values
+        filteredData.forEach((data, i) => {
+            const date = new Date(data.date);
+            const month = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+            
+            monthGroups.set(month, {
+                lastDay: data,
+                value: (sp500Shares * data.value) + 
+                       (dowShares * dowData[i].value) + 
+                       (nasdaqShares * nasdaqData[i].value)
             });
+        });
+
+        // Calculate returns for each month
+        Array.from(monthGroups.entries()).forEach(([month, data], index) => {
+            if (lastMonthValue === null) {
+                lastMonthValue = totalInvestment;
+            }
+            
+            const monthReturn = ((data.value - lastMonthValue) / lastMonthValue) * 100;
+            monthlyData.push({ date: month, return: monthReturn });
+            lastMonthValue = data.value;
+        });
 
         return monthlyData;
     }
 
+    // Calculate cumulative returns
     function calculateCumulativeReturns() {
         const cumulativeData: { date: string; return: number }[] = [];
         const initialValue = totalInvestment;
+        
+        // Filter data for the selected year only
+        const yearEndDate = selectedYear === '2024' ? '2024-12-31' : '2025-12-31';
+        const yearStartDate = selectedYear === '2024' ? '2024-01-01' : '2025-01-01';
+        
+        const filteredData = sp500Data.filter(d => d.date >= yearStartDate && d.date <= yearEndDate);
 
-        sp500Data
-            .filter(d => d.date <= '2024-12-31')
-            .forEach((data, i) => {
-                const totalValue = (sp500Shares * data.value) + 
-                                 (dowShares * dowData[i].value) + 
-                                 (nasdaqShares * nasdaqData[i].value);
-                const cumulativeReturn = ((totalValue - initialValue) / initialValue) * 100;
-                cumulativeData.push({ date: data.date, return: cumulativeReturn });
-            });
+        filteredData.forEach((data, i) => {
+            const totalValue = (sp500Shares * data.value) + 
+                             (dowShares * dowData[i].value) + 
+                             (nasdaqShares * nasdaqData[i].value);
+            const cumulativeReturn = ((totalValue - initialValue) / initialValue);
+            cumulativeData.push({ date: data.date, return: cumulativeReturn });
+        });
 
         return cumulativeData;
     }
@@ -320,11 +395,13 @@
             }
         } else if (graphType === 'performance' && sp500Data?.length && dowData?.length && nasdaqData?.length) {
             console.log('Rendering performance chart');
-            // Filter data to end at 2024-12-31
-            const endDate = '2024-12-31';
-            const filteredSP500Data = sp500Data.filter(d => d.date <= endDate);
-            const filteredDowData = dowData.filter(d => d.date <= endDate);
-            const filteredNasdaqData = nasdaqData.filter(d => d.date <= endDate);
+            // Filter data based on selected year
+            const yearEndDate = selectedYear === '2024' ? '2024-12-31' : '2025-12-31';
+            const yearStartDate = selectedYear === '2024' ? '2024-01-01' : '2025-01-01';
+            
+            const filteredSP500Data = sp500Data.filter(d => d.date >= yearStartDate && d.date <= yearEndDate);
+            const filteredDowData = dowData.filter(d => d.date >= yearStartDate && d.date <= yearEndDate);
+            const filteredNasdaqData = nasdaqData.filter(d => d.date >= yearStartDate && d.date <= yearEndDate);
 
             const labels = filteredSP500Data.map(d => formatDate(d.date));
             let datasets = [];
@@ -371,7 +448,7 @@
 
             if (visibleStocks.totalPortfolio) {
                 datasets.push({
-                    label: 'Carteira Total',
+                    label: '★ Carteira Total ★',
                     data: filteredSP500Data.map((d, i) => {
                         if (filteredDowData[i] && filteredNasdaqData[i]) {
                             return (sp500Shares * d.value) + (dowShares * filteredDowData[i].value) + (nasdaqShares * filteredNasdaqData[i].value);
@@ -379,9 +456,12 @@
                         return 0;
                     }),
                     borderColor: colors.portfolio,
-                    borderWidth: 3,
+                    backgroundColor: 'rgba(168, 85, 247, 0.1)',
+                    borderWidth: 4,
                     tension: 0.1,
-                    fill: false
+                    fill: true,
+                    order: -1,
+                    z: 1
                 });
             }
 
@@ -473,9 +553,9 @@
                             y: {
                                 beginAtZero: true,
                                 ticks: {
-                                    callback: function(this: any, value: string | number) {
+                                    callback: (value) => {
                                         if (typeof value === 'number') {
-                                            return formatPercentage(value / 100);
+                                            return value.toFixed(2) + '%';
                                         }
                                         return value;
                                     }
@@ -485,7 +565,7 @@
                         plugins: {
                             tooltip: {
                                 callbacks: {
-                                    label: (context: any) => `Retorno: ${formatPercentage(context.raw / 100)}`
+                                    label: (context) => `Retorno: ${context.raw.toFixed(2)}%`
                                 }
                             }
                         }
@@ -507,7 +587,7 @@
                         labels: cumulativeData.map(d => formatDate(d.date)),
                         datasets: [{
                             label: 'Retorno Acumulado',
-                            data: cumulativeData.map(d => d.return),
+                            data: cumulativeData.map(d => d.return * 100), // Convert to percentage
                             borderColor: 'rgb(168, 85, 247)',
                             borderWidth: 2,
                             tension: 0.1,
@@ -520,11 +600,8 @@
                         scales: {
                             y: {
                                 ticks: {
-                                    callback: function(this: any, value: string | number) {
-                                        if (typeof value === 'number') {
-                                            return formatPercentage(value / 100);
-                                        }
-                                        return value;
+                                    callback: function(value: number) {
+                                        return formatPercentage(value / 100);
                                     }
                                 }
                             }
@@ -532,7 +609,9 @@
                         plugins: {
                             tooltip: {
                                 callbacks: {
-                                    label: (context: any) => `Retorno: ${formatPercentage(context.raw / 100)}`
+                                    label: (context: { raw: number }) => {
+                                        return `Retorno: ${formatPercentage(context.raw / 100)}`;
+                                    }
                                 }
                             }
                         }
@@ -563,9 +642,36 @@
             updateChart();
         }
     }
+
+    let debounceTimer: ReturnType<typeof setTimeout>;
+
+    let showRefreshIndicator = false;
+
+    function handleInvestmentChange(value: string, index?: string) {
+        const numValue = Number(value);
+        
+        if (!isNaN(numValue) && numValue >= 0 && numValue <= 1000000000) {
+            if (index) {
+                investments[index as keyof typeof investments] = numValue;
+            } else if (viewMode !== 'COMBINED') {
+                const targetIndex = viewMode.toLowerCase() as keyof typeof investments;
+                investments[targetIndex] = numValue;
+            }
+            showRefreshIndicator = true;
+            updateChart();
+            setTimeout(() => {
+                showRefreshIndicator = false;
+            }, 500);
+        }
+    }
 </script>
 
-<div class="container mx-auto p-4 bg-gray-900 text-white min-h-screen">
+<div class="container mx-auto p-4 bg-gray-900 text-white min-h-screen relative">
+    {#if showRefreshIndicator}
+        <div class="fixed top-4 right-4 bg-gray-800 text-gray-300 px-2 py-1 rounded text-sm opacity-75 transition-opacity">
+            Atualizado ↻
+        </div>
+    {/if}
     <h1 class="text-3xl font-bold mb-6 text-center">Simulador de Investimento</h1>
 
     <div class="flex justify-center space-x-4 mb-6">
@@ -597,17 +703,60 @@
                         <option value="COMBINED">Carteira Completa</option>
                         <option value="SP500">Apenas S&P 500</option>
                         <option value="DOW">Apenas Dow Jones</option>
+                        <option value="NASDAQ">Apenas NASDAQ</option>
                     </select>
                 </div>
                 <div>
-                    <label for="investment-amount" class="block mb-2">Montante por Índice (EUR):</label>
-                    <input
-                        id="investment-amount"
-                        type="number"
-                        bind:value={investmentAmount}
-                        class="w-full p-2 bg-gray-700 rounded text-white"
-                        min="1"
-                    />
+                    <label for="investment-amount" class="block mb-2">
+                        {viewMode === 'COMBINED' ? 'Montante por Índice' : 'Montante do Índice'} (EUR):
+                    </label>
+                    {#if viewMode === 'COMBINED'}
+                        <div class="space-y-2">
+                            <div class="flex items-center gap-2">
+                                <label class="w-24">S&P 500:</label>
+                                <input
+                                    type="number"
+                                    value={investments.sp500}
+                                    on:input={(e) => handleInvestmentChange(e.currentTarget.value, 'sp500')}
+                                    class="flex-1 p-2 bg-gray-700 rounded text-white"
+                                    min="0"
+                                    step="1000"
+                                />
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <label class="w-24">Dow Jones:</label>
+                                <input
+                                    type="number"
+                                    value={investments.dow}
+                                    on:input={(e) => handleInvestmentChange(e.currentTarget.value, 'dow')}
+                                    class="flex-1 p-2 bg-gray-700 rounded text-white"
+                                    min="0"
+                                    step="1000"
+                                />
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <label class="w-24">NASDAQ:</label>
+                                <input
+                                    type="number"
+                                    value={investments.nasdaq}
+                                    on:input={(e) => handleInvestmentChange(e.currentTarget.value, 'nasdaq')}
+                                    class="flex-1 p-2 bg-gray-700 rounded text-white"
+                                    min="0"
+                                    step="1000"
+                                />
+                            </div>
+                        </div>
+                    {:else}
+                        <input
+                            id="investment-amount"
+                            type="number"
+                            value={investmentAmount}
+                            on:input={(e) => handleInvestmentChange(e.currentTarget.value)}
+                            class="w-full p-2 bg-gray-700 rounded text-white"
+                            min="0"
+                            step="1000"
+                        />
+                    {/if}
                     <p class="text-sm text-gray-400 mt-1">Investimento total: {formatCurrency(totalInvestment)}</p>
                 </div>
                 <div class="space-y-2">
@@ -636,18 +785,18 @@
                                 type="checkbox"
                                 bind:checked={visibleStocks.nasdaqIndex}
                                 on:change={updateChart}
-                                class="form-checkbox text-purple-600"
+                                class="form-checkbox text-pink-500"
                             />
-                            <span class="text-sm whitespace-nowrap text-purple-400 font-medium">NASDAQ</span>
+                            <span class="text-sm whitespace-nowrap">NASDAQ</span>
                         </label>
                         <label class="flex items-center space-x-2">
                             <input
                                 type="checkbox"
                                 bind:checked={visibleStocks.totalPortfolio}
                                 on:change={updateChart}
-                                class="form-checkbox text-purple-600"
+                                class="form-checkbox text-purple-500"
                             />
-                            <span class="text-sm whitespace-nowrap text-purple-400 font-medium">Carteira Total</span>
+                            <span class="text-sm whitespace-nowrap">Carteira Total</span>
                         </label>
                     </div>
                 </div>
@@ -657,15 +806,162 @@
         <div class="bg-gray-800 p-4 rounded-lg">
             <h2 class="text-xl font-semibold mb-4">Resultados da Carteira</h2>
             <div class="space-y-2">
-                <p>Período: {formatDate(sp500Data[0].date)} a {formatDate(sp500Data[sp500Data.length - 1].date)}</p>
-                <p>Duração: {calculateDuration(sp500Data[0].date, sp500Data[sp500Data.length - 1].date)}</p>
+                <p>Período: {formatDate(sp500Data[sp500Data.length - 1].date)} a {formatDate(sp500Data[0].date)}</p>
+                <p>Duração: {calculateDuration(sp500Data[sp500Data.length - 1].date, sp500Data[0].date)}</p>
                 
                 <div class="mt-4">
-                    <h3 class="font-semibold text-lg">Investimento Total: {formatCurrency(totalInvestment)}</h3>
-                    <div class="pl-4 mt-2 space-y-1">
-                        <p>S&P 500: {formatCurrency(investmentAmount)}</p>
-                        <p>Dow Jones: {formatCurrency(investmentAmount)}</p>
-                        <p>NASDAQ: {formatCurrency(investmentAmount)}</p>
+                    <h3 class="font-semibold text-lg">Investimento Total: {formatCurrency(Object.values(investments).reduce((a, b) => a + b, 0))}</h3>
+                    <div class="pl-4 mt-2 space-y-2">
+                        <div class="flex items-center justify-between bg-gray-800 p-2 rounded">
+                            {#if editingIndex === 'sp500'}
+                                <div class="flex items-center gap-2 flex-1">
+                                    <input
+                                        type="number"
+                                        bind:value={tempInvestmentAmount}
+                                        class="w-32 px-2 py-1 bg-gray-700 rounded text-white {inputError ? 'border-red-500' : ''}"
+                                        min="0"
+                                        step="1000"
+                                    />
+                                    <button
+                                        on:click={saveEdit}
+                                        class="px-2 py-1 bg-green-600 text-white rounded hover:bg-green-700"
+                                        title="Save"
+                                    >
+                                        ✓
+                                    </button>
+                                    <button
+                                        on:click={cancelEdit}
+                                        class="px-2 py-1 bg-red-600 text-white rounded hover:bg-red-700"
+                                        title="Cancel"
+                                    >
+                                        ✕
+                                    </button>
+                                    {#if inputError}
+                                        <span class="text-red-500 text-sm">{inputError}</span>
+                                    {/if}
+                                </div>
+                            {:else}
+                                <div class="flex items-center justify-between w-full">
+                                    <p>S&P 500: {formatCurrency(investments.sp500)}</p>
+                                    <div class="flex gap-2">
+                                        <button
+                                            on:click={() => startEditing('sp500')}
+                                            class="p-1 text-gray-400 hover:text-white transition-colors"
+                                            title="Edit"
+                                        >
+                                            ✎
+                                        </button>
+                                        <button
+                                            on:click={() => deleteInvestment('sp500')}
+                                            class="p-1 text-gray-400 hover:text-red-500 transition-colors"
+                                            title="Delete"
+                                        >
+                                            ×
+                                        </button>
+                                    </div>
+                                </div>
+                            {/if}
+                        </div>
+                        <div class="flex items-center justify-between bg-gray-800 p-2 rounded">
+                            {#if editingIndex === 'dow'}
+                                <div class="flex items-center gap-2 flex-1">
+                                    <input
+                                        type="number"
+                                        bind:value={tempInvestmentAmount}
+                                        class="w-32 px-2 py-1 bg-gray-700 rounded text-white {inputError ? 'border-red-500' : ''}"
+                                        min="0"
+                                        step="1000"
+                                    />
+                                    <button
+                                        on:click={saveEdit}
+                                        class="px-2 py-1 bg-green-600 text-white rounded hover:bg-green-700"
+                                        title="Save"
+                                    >
+                                        ✓
+                                    </button>
+                                    <button
+                                        on:click={cancelEdit}
+                                        class="px-2 py-1 bg-red-600 text-white rounded hover:bg-red-700"
+                                        title="Cancel"
+                                    >
+                                        ✕
+                                    </button>
+                                    {#if inputError}
+                                        <span class="text-red-500 text-sm">{inputError}</span>
+                                    {/if}
+                                </div>
+                            {:else}
+                                <div class="flex items-center justify-between w-full">
+                                    <p>Dow Jones: {formatCurrency(investments.dow)}</p>
+                                    <div class="flex gap-2">
+                                        <button
+                                            on:click={() => startEditing('dow')}
+                                            class="p-1 text-gray-400 hover:text-white transition-colors"
+                                            title="Edit"
+                                        >
+                                            ✎
+                                        </button>
+                                        <button
+                                            on:click={() => deleteInvestment('dow')}
+                                            class="p-1 text-gray-400 hover:text-red-500 transition-colors"
+                                            title="Delete"
+                                        >
+                                            ×
+                                        </button>
+                                    </div>
+                                </div>
+                            {/if}
+                        </div>
+                        <div class="flex items-center justify-between bg-gray-800 p-2 rounded">
+                            {#if editingIndex === 'nasdaq'}
+                                <div class="flex items-center gap-2 flex-1">
+                                    <input
+                                        type="number"
+                                        bind:value={tempInvestmentAmount}
+                                        class="w-32 px-2 py-1 bg-gray-700 rounded text-white {inputError ? 'border-red-500' : ''}"
+                                        min="0"
+                                        step="1000"
+                                    />
+                                    <button
+                                        on:click={saveEdit}
+                                        class="px-2 py-1 bg-green-600 text-white rounded hover:bg-green-700"
+                                        title="Save"
+                                    >
+                                        ✓
+                                    </button>
+                                    <button
+                                        on:click={cancelEdit}
+                                        class="px-2 py-1 bg-red-600 text-white rounded hover:bg-red-700"
+                                        title="Cancel"
+                                    >
+                                        ✕
+                                    </button>
+                                    {#if inputError}
+                                        <span class="text-red-500 text-sm">{inputError}</span>
+                                    {/if}
+                                </div>
+                            {:else}
+                                <div class="flex items-center justify-between w-full">
+                                    <p>NASDAQ: {formatCurrency(investments.nasdaq)}</p>
+                                    <div class="flex gap-2">
+                                        <button
+                                            on:click={() => startEditing('nasdaq')}
+                                            class="p-1 text-gray-400 hover:text-white transition-colors"
+                                            title="Edit"
+                                        >
+                                            ✎
+                                        </button>
+                                        <button
+                                            on:click={() => deleteInvestment('nasdaq')}
+                                            class="p-1 text-gray-400 hover:text-red-500 transition-colors"
+                                            title="Delete"
+                                        >
+                                            ×
+                                        </button>
+                                    </div>
+                                </div>
+                            {/if}
+                        </div>
                     </div>
                 </div>
 
