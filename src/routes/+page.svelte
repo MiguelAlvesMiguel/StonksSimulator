@@ -251,38 +251,26 @@
     // Calculate monthly returns
     function calculateMonthlyReturns() {
         const monthlyData: { date: string; return: number }[] = [];
-        let lastMonthValue: number | null = null;
+        const initialValue = totalInvestment;
         
         // Filter data for the selected year only
         const yearEndDate = selectedYear === '2024' ? '2024-12-31' : '2025-12-31';
         const yearStartDate = selectedYear === '2024' ? '2024-01-01' : '2025-01-01';
         
         const filteredData = sp500Data.filter(d => d.date >= yearStartDate && d.date <= yearEndDate);
-        const monthGroups = new Map<string, { lastDay: any, value: number }>();
 
-        // Group data by month and keep the last day's values
-        filteredData.forEach((data, i) => {
-            const date = new Date(data.date);
-            const month = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-            
-            monthGroups.set(month, {
-                lastDay: data,
-                value: (sp500Shares * data.value) + 
-                       (dowShares * dowData[i].value) + 
-                       (nasdaqShares * nasdaqData[i].value)
-            });
-        });
+        let previousValue = (sp500Shares * filteredData[0].value) + 
+                          (dowShares * dowData[0].value) + 
+                          (nasdaqShares * nasdaqData[0].value);
 
-        // Calculate returns for each month
-        Array.from(monthGroups.entries()).forEach(([month, data], index) => {
-            if (lastMonthValue === null) {
-                lastMonthValue = totalInvestment;
-            }
-            
-            const monthReturn = ((data.value - lastMonthValue) / lastMonthValue) * 100;
-            monthlyData.push({ date: month, return: monthReturn });
-            lastMonthValue = data.value;
-        });
+        for (let i = 1; i < filteredData.length; i++) {
+            const currentValue = (sp500Shares * filteredData[i].value) + 
+                               (dowShares * dowData[i].value) + 
+                               (nasdaqShares * nasdaqData[i].value);
+            const monthlyReturn = ((currentValue - previousValue) / previousValue) * 100;
+            monthlyData.push({ date: filteredData[i].date, return: monthlyReturn });
+            previousValue = currentValue;
+        }
 
         return monthlyData;
     }
@@ -302,47 +290,69 @@
             const totalValue = (sp500Shares * data.value) + 
                              (dowShares * dowData[i].value) + 
                              (nasdaqShares * nasdaqData[i].value);
-            const cumulativeReturn = ((totalValue - initialValue) / initialValue);
+            const cumulativeReturn = ((totalValue - initialValue) / initialValue) * 100;
             cumulativeData.push({ date: data.date, return: cumulativeReturn });
         });
 
         return cumulativeData;
     }
 
-    interface CumulativeDataPoint {
-        date: string;
-        return: number;
+    interface ChartData {
+        performance: any[] | null;
+        monthlyReturns: { date: string; return: number }[] | null;
+        cumulativeReturns: { date: string; return: number }[] | null;
+        taxBreakdown: any[] | null;
     }
 
-    let chartRef: Chart | null = null;
-    let taxData: { label: string; value: number; }[] = [];
+    // Initialize chart data
+    let chartData: ChartData = {
+        performance: null,
+        monthlyReturns: null,
+        cumulativeReturns: null,
+        taxBreakdown: null
+    };
 
+    // Add separate canvas references for each chart type
+    let performanceCanvas: HTMLCanvasElement;
+    let monthlyReturnsCanvas: HTMLCanvasElement;
+    let cumulativeReturnsCanvas: HTMLCanvasElement;
+    let taxBreakdownCanvas: HTMLCanvasElement;
+
+    // Update chart function
     function updateChart() {
-        if (!browser) return;
-        
         console.log('Updating chart:', graphType);
-        console.log('Data lengths:', {
-            sp500: sp500Data?.length,
-            dow: dowData?.length,
-            nasdaq: nasdaqData?.length
-        });
+        
+        // Get the appropriate canvas based on chart type
+        const canvas = graphType === 'performance' ? performanceCanvas :
+                      graphType === 'monthly-returns' ? monthlyReturnsCanvas :
+                      graphType === 'cumulative-returns' ? cumulativeReturnsCanvas :
+                      taxBreakdownCanvas;
+
+        if (!canvas) {
+            console.error('Canvas not found for', graphType);
+            return;
+        }
+
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+            console.error('Could not get canvas context');
+            return;
+        }
 
         if (chart) {
             console.log('Destroying existing chart');
             chart.destroy();
+            chart = null;
         }
 
-        const canvasId = graphType === 'tax-breakdown' ? 'costDistributionChart' : 'indexChart';
-        console.log('Looking for canvas with ID:', canvasId);
-        
-        const ctx = document.getElementById(canvasId);
-        if (!(ctx instanceof HTMLCanvasElement)) {
-            console.error('Canvas element not found:', canvasId);
-            // Wait a bit and try again
-            setTimeout(updateChart, 100);
-            return;
+        // Calculate data based on graph type
+        if (graphType === 'cumulative-returns') {
+            chartData.cumulativeReturns = calculateCumulativeReturns();
+        } else if (graphType === 'monthly-returns') {
+            chartData.monthlyReturns = calculateMonthlyReturns();
         }
 
+        // Create chart based on type
         if (graphType === 'tax-breakdown') {
             console.log('Rendering tax breakdown chart');
             const taxData = [
@@ -401,7 +411,7 @@
             } catch (error) {
                 console.error('Error creating tax breakdown chart:', error);
             }
-        } else if (graphType === 'performance' && sp500Data?.length && dowData?.length && nasdaqData?.length) {
+        } else if (graphType === 'performance') {
             console.log('Rendering performance chart');
             // Filter data based on selected year
             const yearEndDate = selectedYear === '2024' ? '2024-12-31' : '2025-12-31';
@@ -513,7 +523,7 @@
                                         
                                         return [
                                             `${label}: ${formatCurrency(value)}`,
-                                            `Crescimento: ${growthText}${formatPercentage(growth.relative / 100)}`
+                                            `Crescimento: ${growthText}${formatPercentage(growth.relative )}`
                                         ];
                                     }
                                 }
@@ -536,21 +546,21 @@
             } catch (error) {
                 console.error('Error creating performance chart:', error);
             }
-        } else if (graphType === 'monthly-returns') {
-            console.log('Rendering monthly returns chart');
-            const monthlyData = calculateMonthlyReturns();
-            console.log('Monthly returns data:', monthlyData);
-
+        } else if (graphType === 'monthly-returns' && chartData.monthlyReturns?.length) {
             try {
                 chart = new Chart(ctx, {
                     type: 'bar',
                     data: {
-                        labels: monthlyData.map(d => d.date),
+                        labels: chartData.monthlyReturns.map((d: { date: string }) => formatDate(d.date)),
                         datasets: [{
                             label: 'Retorno Mensal',
-                            data: monthlyData.map(d => d.return),
-                            backgroundColor: monthlyData.map(d => d.return >= 0 ? 'rgba(16, 185, 129, 0.7)' : 'rgba(239, 68, 68, 0.7)'),
-                            borderColor: monthlyData.map(d => d.return >= 0 ? 'rgb(16, 185, 129)' : 'rgb(239, 68, 68)'),
+                            data: chartData.monthlyReturns.map((d: { return: number }) => d.return),
+                            backgroundColor: chartData.monthlyReturns.map((d: { return: number }) => 
+                                d.return >= 0 ? 'rgba(16, 185, 129, 0.7)' : 'rgba(239, 68, 68, 0.7)'
+                            ),
+                            borderColor: chartData.monthlyReturns.map((d: { return: number }) => 
+                                d.return >= 0 ? 'rgb(16, 185, 129)' : 'rgb(239, 68, 68)'
+                            ),
                             borderWidth: 1
                         }]
                     },
@@ -561,11 +571,11 @@
                             y: {
                                 beginAtZero: true,
                                 ticks: {
-                                    callback: (value) => {
-                                        if (typeof value === 'number') {
-                                            return value.toFixed(2) + '%';
+                                    callback: function(tickValue: number | string) {
+                                        if (typeof tickValue === 'number') {
+                                            return tickValue.toFixed(2) + '%';
                                         }
-                                        return value;
+                                        return tickValue;
                                     }
                                 }
                             }
@@ -573,7 +583,9 @@
                         plugins: {
                             tooltip: {
                                 callbacks: {
-                                    label: (context) => `Retorno: ${context.raw.toFixed(2)}%`
+                                    label: function(context: any) {
+                                        return `Retorno: ${(context.raw).toFixed(2)}%`;
+                                    }
                                 }
                             }
                         }
@@ -583,19 +595,15 @@
             } catch (error) {
                 console.error('Error creating monthly returns chart:', error);
             }
-        } else if (graphType === 'cumulative-returns') {
-            console.log('Rendering cumulative returns chart');
-            const cumulativeData = calculateCumulativeReturns();
-            console.log('Cumulative returns data:', cumulativeData);
-
+        } else if (graphType === 'cumulative-returns' && chartData.cumulativeReturns?.length) {
             try {
                 chart = new Chart(ctx, {
                     type: 'line',
                     data: {
-                        labels: cumulativeData.map(d => formatDate(d.date)),
+                        labels: chartData.cumulativeReturns.map((d: { date: string }) => formatDate(d.date)),
                         datasets: [{
                             label: 'Retorno Acumulado',
-                            data: cumulativeData.map(d => d.return * 100), // Convert to percentage
+                            data: chartData.cumulativeReturns.map((d: { return: number }) => d.return),
                             borderColor: 'rgb(168, 85, 247)',
                             borderWidth: 2,
                             tension: 0.1,
@@ -608,8 +616,11 @@
                         scales: {
                             y: {
                                 ticks: {
-                                    callback: function(value: number) {
-                                        return formatPercentage(value / 100);
+                                    callback: function(tickValue: number | string) {
+                                        if (typeof tickValue === 'number') {
+                                            return tickValue.toFixed(2) + '%';
+                                        }
+                                        return tickValue;
                                     }
                                 }
                             }
@@ -617,8 +628,8 @@
                         plugins: {
                             tooltip: {
                                 callbacks: {
-                                    label: (context: { raw: number }) => {
-                                        return `Retorno: ${formatPercentage(context.raw / 100)}`;
+                                    label: function(context: any) {
+                                        return `Retorno: ${(context.raw).toFixed(2)}%`;
                                     }
                                 }
                             }
@@ -702,6 +713,30 @@
         sixYears: calculateProjectedValue(totalFinalValue, 6),
         nineYears: calculateProjectedValue(totalFinalValue, 9)
     };
+
+    // Add function to calculate potential tax savings for each period
+    function calculatePotentialSavings(grossProfit: number, effectiveTaxRate: number): number {
+        const taxWithoutBenefit = grossProfit * BASE_CAPITAL_GAINS_TAX;
+        const taxWithBenefit = grossProfit * effectiveTaxRate;
+        return taxWithoutBenefit - taxWithBenefit;
+    }
+
+    // Calculate potential savings for each period
+    $: potentialSavings = {
+        twoToFive: calculatePotentialSavings(totalGrossProfit, BASE_CAPITAL_GAINS_TAX * 0.9),
+        fiveToEight: calculatePotentialSavings(totalGrossProfit, BASE_CAPITAL_GAINS_TAX * 0.8),
+        overEight: calculatePotentialSavings(totalGrossProfit, BASE_CAPITAL_GAINS_TAX * 0.7)
+    };
+
+    // Add function to handle graph type changes
+    function handleGraphTypeChange(type: 'performance' | 'monthly-returns' | 'cumulative-returns' | 'tax-breakdown') {
+        graphType = type;
+        updateChart();
+        // Add a small delay and trigger another update to ensure the chart loads
+        setTimeout(() => {
+            updateChart();
+        }, 50);
+    }
 </script>
 
 <div class="container mx-auto p-4 bg-gray-900 text-white min-h-screen relative">
@@ -727,7 +762,7 @@
         </button>
     </div>
 
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
         <div class="bg-gray-800 p-4 rounded-lg">
             <h2 class="text-xl font-semibold mb-4">Detalhes do Investimento</h2>
             <div class="space-y-4">
@@ -844,373 +879,168 @@
         <div class="bg-gray-800 p-4 rounded-lg">
             <h2 class="text-xl font-semibold mb-4">Resultados da Carteira</h2>
             <div class="space-y-2">
-                <p>Período: {formatDate(sp500Data[sp500Data.length - 1].date)} a {formatDate(sp500Data[0].date)}</p>
-                <p>Duração: {calculateDuration(sp500Data[sp500Data.length - 1].date, sp500Data[0].date)}</p>
+                <div class="flex justify-between items-start">
+                    <div>
+                        <p>Período: {formatDate(sp500Data[sp500Data.length - 1].date)} a {formatDate(sp500Data[0].date)}</p>
+                        <p>Duração: {calculateDuration(sp500Data[sp500Data.length - 1].date, sp500Data[0].date)}</p>
+                    </div>
+                    <div class="text-right">
+                        <p class="text-sm text-gray-400">Valor Inicial</p>
+                        <p class="text-lg font-semibold">{formatCurrency(Object.values(investments).reduce((a, b) => a + b, 0))}</p>
+                    </div>
+                </div>
                 
-                <div class="mt-4">
-                    <h3 class="font-semibold text-lg">Investimento Total: {formatCurrency(Object.values(investments).reduce((a, b) => a + b, 0))}</h3>
-                    <div class="pl-4 mt-2 space-y-2">
-                        <div class="flex items-center justify-between bg-gray-800 p-2 rounded">
-                            {#if editingIndex === 'sp500'}
-                                <div class="flex items-center gap-2 flex-1">
-                                    <input
-                                        type="number"
-                                        bind:value={tempInvestmentAmount}
-                                        class="w-32 px-2 py-1 bg-gray-700 rounded text-white {inputError ? 'border-red-500' : ''}"
-                                        min="0"
-                                        step="1000"
-                                    />
-                                    <button
-                                        on:click={saveEdit}
-                                        class="px-2 py-1 bg-green-600 text-white rounded hover:bg-green-700"
-                                        title="Save"
-                                    >
-                                        ✓
-                                    </button>
-                                    <button
-                                        on:click={cancelEdit}
-                                        class="px-2 py-1 bg-red-600 text-white rounded hover:bg-red-700"
-                                        title="Cancel"
-                                    >
-                                        ✕
-                                    </button>
-                                    {#if inputError}
-                                        <span class="text-red-500 text-sm">{inputError}</span>
-                                    {/if}
-                                </div>
-                            {:else}
-                                <div class="flex items-center justify-between w-full">
-                                    <p>S&P 500: {formatCurrency(investments.sp500)}</p>
-                                    <div class="flex gap-2">
-                                        <button
-                                            on:click={() => startEditing('sp500')}
-                                            class="p-1 text-gray-400 hover:text-white transition-colors"
-                                            title="Edit"
-                                        >
-                                            ✎
-                                        </button>
-                                        <button
-                                            on:click={() => deleteInvestment('sp500')}
-                                            class="p-1 text-gray-400 hover:text-red-500 transition-colors"
-                                            title="Delete"
-                                        >
-                                            ×
-                                        </button>
-                                    </div>
-                                </div>
-                            {/if}
-                        </div>
-                        <div class="flex items-center justify-between bg-gray-800 p-2 rounded">
-                            {#if editingIndex === 'dow'}
-                                <div class="flex items-center gap-2 flex-1">
-                                    <input
-                                        type="number"
-                                        bind:value={tempInvestmentAmount}
-                                        class="w-32 px-2 py-1 bg-gray-700 rounded text-white {inputError ? 'border-red-500' : ''}"
-                                        min="0"
-                                        step="1000"
-                                    />
-                                    <button
-                                        on:click={saveEdit}
-                                        class="px-2 py-1 bg-green-600 text-white rounded hover:bg-green-700"
-                                        title="Save"
-                                    >
-                                        ✓
-                                    </button>
-                                    <button
-                                        on:click={cancelEdit}
-                                        class="px-2 py-1 bg-red-600 text-white rounded hover:bg-red-700"
-                                        title="Cancel"
-                                    >
-                                        ✕
-                                    </button>
-                                    {#if inputError}
-                                        <span class="text-red-500 text-sm">{inputError}</span>
-                                    {/if}
-                                </div>
-                            {:else}
-                                <div class="flex items-center justify-between w-full">
-                                    <p>Dow Jones: {formatCurrency(investments.dow)}</p>
-                                    <div class="flex gap-2">
-                                        <button
-                                            on:click={() => startEditing('dow')}
-                                            class="p-1 text-gray-400 hover:text-white transition-colors"
-                                            title="Edit"
-                                        >
-                                            ✎
-                                        </button>
-                                        <button
-                                            on:click={() => deleteInvestment('dow')}
-                                            class="p-1 text-gray-400 hover:text-red-500 transition-colors"
-                                            title="Delete"
-                                        >
-                                            ×
-                                        </button>
-                                    </div>
-                                </div>
-                            {/if}
-                        </div>
-                        <div class="flex items-center justify-between bg-gray-800 p-2 rounded">
-                            {#if editingIndex === 'nasdaq'}
-                                <div class="flex items-center gap-2 flex-1">
-                                    <input
-                                        type="number"
-                                        bind:value={tempInvestmentAmount}
-                                        class="w-32 px-2 py-1 bg-gray-700 rounded text-white {inputError ? 'border-red-500' : ''}"
-                                        min="0"
-                                        step="1000"
-                                    />
-                                    <button
-                                        on:click={saveEdit}
-                                        class="px-2 py-1 bg-green-600 text-white rounded hover:bg-green-700"
-                                        title="Save"
-                                    >
-                                        ✓
-                                    </button>
-                                    <button
-                                        on:click={cancelEdit}
-                                        class="px-2 py-1 bg-red-600 text-white rounded hover:bg-red-700"
-                                        title="Cancel"
-                                    >
-                                        ✕
-                                    </button>
-                                    {#if inputError}
-                                        <span class="text-red-500 text-sm">{inputError}</span>
-                                    {/if}
-                                </div>
-                            {:else}
-                                <div class="flex items-center justify-between w-full">
-                                    <p>NASDAQ: {formatCurrency(investments.nasdaq)}</p>
-                                    <div class="flex gap-2">
-                                        <button
-                                            on:click={() => startEditing('nasdaq')}
-                                            class="p-1 text-gray-400 hover:text-white transition-colors"
-                                            title="Edit"
-                                        >
-                                            ✎
-                                        </button>
-                                        <button
-                                            on:click={() => deleteInvestment('nasdaq')}
-                                            class="p-1 text-gray-400 hover:text-red-500 transition-colors"
-                                            title="Delete"
-                                        >
-                                            ×
-                                        </button>
-                                    </div>
-                                </div>
-                            {/if}
-                        </div>
+                <div class="grid grid-cols-2 gap-4 mt-4">
+                    <div class="bg-gray-700 p-3 rounded">
+                        <p class="text-sm text-gray-400">Valor Final</p>
+                        <p class="text-lg font-semibold">{formatCurrency(totalFinalValue)}</p>
+                        <p class="text-sm {totalGrossProfit >= 0 ? 'text-emerald-400' : 'text-red-400'}">
+                            {totalGrossProfit >= 0 ? '+' : ''}{formatCurrency(totalGrossProfit)}
+                        </p>
+                    </div>
+                    <div class="bg-gray-700 p-3 rounded">
+                        <p class="text-sm text-gray-400">Retorno Total</p>
+                        <p class="text-lg font-semibold">{formatPercentage(totalReturnPercentage)}</p>
+                        <p class="text-sm text-gray-400">
+                            {formatPercentage(totalReturnPercentage / monthsDiff)} /mês
+                        </p>
                     </div>
                 </div>
 
-                <div class="mt-4">
-                    <h3 class="font-semibold text-lg">Valor Final: {formatCurrency(totalFinalValue)}</h3>
-                    <div class="pl-4 mt-2 space-y-1">
-                        <p>S&P 500: {formatCurrency(sp500FinalValue)}</p>
-                        <p>Dow Jones: {formatCurrency(dowFinalValue)}</p>
-                        <p>NASDAQ: {formatCurrency(nasdaqFinalValue)}</p>
+                <div class="grid grid-cols-2 gap-4 mt-4">
+                    <div class="bg-gray-700 p-3 rounded">
+                        <p class="text-sm text-gray-400">Custos Totais</p>
+                        <p class="text-lg font-semibold text-red-400">-{formatCurrency(totalFees)}</p>
+                        <p class="text-xs text-gray-400">Inclui taxas e custos de manutenção</p>
+                    </div>
+                    <div class="bg-gray-700 p-3 rounded">
+                        <p class="text-sm text-gray-400">Lucro Líquido</p>
+                        <p class="text-lg font-semibold {totalNetProfit >= 0 ? 'text-emerald-400' : 'text-red-400'}">
+                            {totalNetProfit >= 0 ? '+' : ''}{formatCurrency(totalNetProfit)}
+                        </p>
+                        <p class="text-xs text-gray-400">Após custos e impostos</p>
                     </div>
                 </div>
+            </div>
+        </div>
 
-                <div class="mt-4">
-                    <h3 class="font-semibold text-lg">Lucro Bruto: {formatCurrency(totalGrossProfit)}</h3>
-                    <div class="pl-4 mt-2 space-y-1">
-                        <p>S&P 500: {formatCurrency(sp500GrossProfit)}</p>
-                        <p>Dow Jones: {formatCurrency(dowGrossProfit)}</p>
-                        <p>NASDAQ: {formatCurrency(nasdaqGrossProfit)}</p>
-                    </div>
-                </div>
-
-                <div class="mt-4">
-                    <h3 class="font-semibold text-lg text-red-400">Custos e Impostos</h3>
-                    
-                    <div class="pl-4 mt-2">
-                        <h4 class="font-medium">Custos de Compra</h4>
-                        <div class="pl-4 space-y-1 text-sm">
-                            <p>Imposto do Selo: {formatCurrency(sp500BuyTransactionTax + dowBuyTransactionTax + nasdaqBuyTransactionTax)}</p>
-                            <p>Comissão do Broker: {formatCurrency(sp500BuyBrokerFee + dowBuyBrokerFee + nasdaqBuyBrokerFee)}</p>
-                            <p>Taxa de Acesso ao Mercado: {formatCurrency(sp500BuyMarketFee + dowBuyMarketFee + nasdaqBuyMarketFee)}</p>
-                            <p>Taxa de Bolsa: {formatCurrency(sp500BuyExchangeFee + dowBuyExchangeFee + nasdaqBuyExchangeFee)}</p>
+        <div class="bg-gray-800 p-4 rounded-lg">
+            <h2 class="text-xl font-semibold mb-4">Informações Fiscais</h2>
+            <div class="space-y-4">
+                <div class="bg-gray-700 p-3 rounded">
+                    <h3 class="font-medium mb-2">Impostos sobre Mais-Valias</h3>
+                    <div class="space-y-2">
+                        <div>
+                            <p class="text-sm text-gray-400">Taxa Efetiva</p>
+                            <p class="text-lg font-semibold">{(effectiveTaxRate * 100).toFixed(1)}%</p>
+                            {#if effectiveTaxRate < BASE_CAPITAL_GAINS_TAX}
+                                <p class="text-xs text-emerald-400">Com benefício fiscal ({holdingPeriodYears.toFixed(1)} anos)</p>
+                            {/if}
                         </div>
-                    </div>
-
-                    <div class="pl-4 mt-2">
-                        <h4 class="font-medium">Custos de Venda</h4>
-                        <div class="pl-4 space-y-1 text-sm">
-                            <p>Imposto do Selo: {formatCurrency(sp500SellTransactionTax + dowSellTransactionTax + nasdaqSellTransactionTax)}</p>
-                            <p>Comissão do Broker: {formatCurrency(sp500SellBrokerFee + dowSellBrokerFee + nasdaqSellBrokerFee)}</p>
-                            <p>Taxa de Acesso ao Mercado: {formatCurrency(sp500SellMarketFee + dowSellMarketFee + nasdaqSellMarketFee)}</p>
-                            <p>Taxa de Bolsa: {formatCurrency(sp500SellExchangeFee + dowSellExchangeFee + nasdaqSellExchangeFee)}</p>
-                        </div>
-                    </div>
-
-                    <div class="pl-4 mt-2">
-                        <h4 class="font-medium">Custos de Manutenção</h4>
-                        <div class="pl-4 space-y-1 text-sm">
-                            <p>Taxa de Custódia ({monthsDiff} meses): {formatCurrency(sp500CustodyFees + dowCustodyFees + nasdaqCustodyFees)}</p>
-                        </div>
-                    </div>
-
-                    <div class="pl-4 mt-2">
-                        <h4 class="font-medium">Impostos sobre Mais-Valias</h4>
-                        <div class="pl-4 space-y-1 text-sm">
-                            <p>
-                                <span class="font-medium">IRS sobre Mais-Valias:</span>
-                                <span class="text-gray-300">{(effectiveTaxRate * 100).toFixed(1)}% sobre o lucro ({formatCurrency(sp500CapitalGainsTax + dowCapitalGainsTax + nasdaqCapitalGainsTax)} total)</span>
-                                <span class="block text-sm text-gray-400">Aplicado sobre o lucro total ({formatCurrency(totalGrossProfit)} × {(effectiveTaxRate * 100).toFixed(1)}%)</span>
-                                {#if effectiveTaxRate < BASE_CAPITAL_GAINS_TAX}
-                                    <span class="block text-sm text-emerald-400">Benefício fiscal aplicado por período de detenção de {holdingPeriodYears.toFixed(1)} anos</span>
-                                {/if}
+                        <div>
+                            <p class="text-sm text-gray-400">Valor do Imposto</p>
+                            <p class="text-lg font-semibold text-red-400">
+                                -{formatCurrency(sp500CapitalGainsTax + dowCapitalGainsTax + nasdaqCapitalGainsTax)}
                             </p>
                         </div>
                     </div>
+                </div>
 
-                    <div class="mt-2 font-medium">
-                        <p>Total de Custos: {formatCurrency(totalFees)}</p>
-                        <p>Total de Impostos: {formatCurrency(totalTaxes)}</p>
-                        <p>Total de Custos e Impostos: {formatCurrency(totalCosts)}</p>
+                <div class="bg-gray-700 p-3 rounded">
+                    <h3 class="font-medium mb-2">Custos de Transação</h3>
+                    <div class="space-y-2">
+                        <div class="flex justify-between">
+                            <span class="text-sm">Imposto do Selo</span>
+                            <span class="text-sm text-red-400">-{formatCurrency(sp500BuyTransactionTax + dowBuyTransactionTax + nasdaqBuyTransactionTax + sp500SellTransactionTax + dowSellTransactionTax + nasdaqSellTransactionTax)}</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-sm">Comissão do Broker</span>
+                            <span class="text-sm text-red-400">-{formatCurrency(sp500BuyBrokerFee + dowBuyBrokerFee + nasdaqBuyBrokerFee + sp500SellBrokerFee + dowSellBrokerFee + nasdaqSellBrokerFee)}</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-sm">Taxa de Custódia</span>
+                            <span class="text-sm text-red-400">-{formatCurrency(sp500CustodyFees + dowCustodyFees + nasdaqCustodyFees)}</span>
+                        </div>
                     </div>
                 </div>
 
-                <div class="mt-4 pt-4 border-t border-gray-700">
-                    <h3 class="text-xl font-bold">Resultado Final</h3>
-                    <div class="pl-4 space-y-2">
-                        <p class="text-lg">Lucro Líquido: {formatCurrency(totalNetProfit)}</p>
-                        <p>Retorno Total: {formatPercentage(totalReturnPercentage)}</p>
-                        <p>Retorno Mensal Médio: {formatPercentage(totalReturnPercentage / monthsDiff)}</p>
+                <div class="bg-gray-700 p-3 rounded">
+                    <h3 class="font-medium mb-2">Benefícios por Tempo</h3>
+                    <div class="space-y-1">
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center">
+                                <div class="w-2 h-2 rounded-full bg-red-500 mr-2"></div>
+                                <span class="text-sm">Até 2 anos: 28%</span>
+                            </div>
+                            <span class="text-sm text-gray-400">(Taxa base)</span>
+                        </div>
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center">
+                                <div class="w-2 h-2 rounded-full bg-yellow-500 mr-2"></div>
+                                <span class="text-sm">2-5 anos: 25,2%</span>
+                            </div>
+                            <span class="text-sm text-emerald-400">(-{formatCurrency(potentialSavings.twoToFive)})</span>
+                        </div>
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center">
+                                <div class="w-2 h-2 rounded-full bg-green-500 mr-2"></div>
+                                <span class="text-sm">5-8 anos: 22,4%</span>
+                            </div>
+                            <span class="text-sm text-emerald-400">(-{formatCurrency(potentialSavings.fiveToEight)})</span>
+                        </div>
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center">
+                                <div class="w-2 h-2 rounded-full bg-blue-500 mr-2"></div>
+                                <span class="text-sm">+8 anos: 19,6%</span>
+                            </div>
+                            <span class="text-sm text-emerald-400">(-{formatCurrency(potentialSavings.overEight)})</span>
+                        </div>
                     </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <div class="bg-gray-800 p-4 rounded-lg">
-        <div class="flex flex-wrap gap-4 mb-4 items-center">
-            <h2 class="text-xl font-semibold">Gráficos</h2>
-            <div class="flex flex-wrap gap-3">
-                <button
-                    class="px-4 py-2 rounded {graphType === 'performance' ? 'bg-red-600' : 'bg-gray-700'}"
-                    on:click={() => { graphType = 'performance'; updateChart(); }}
-                >
-                    Desempenho
-                </button>
-                <button
-                    class="px-4 py-2 rounded {graphType === 'monthly-returns' ? 'bg-red-600' : 'bg-gray-700'}"
-                    on:click={() => { graphType = 'monthly-returns'; updateChart(); }}
-                >
-                    Retornos Mensais
-                </button>
-                <button
-                    class="px-4 py-2 rounded {graphType === 'cumulative-returns' ? 'bg-red-600' : 'bg-gray-700'}"
-                    on:click={() => { graphType = 'cumulative-returns'; updateChart(); }}
-                >
-                    Retorno Acumulado
-                </button>
-                <button
-                    class="px-4 py-2 rounded {graphType === 'tax-breakdown' ? 'bg-red-600' : 'bg-gray-700'}"
-                    on:click={() => { graphType = 'tax-breakdown'; updateChart(); }}
-                >
-                    Distribuição de Custos
-                </button>
-            </div>
-        </div>
-        <div class="h-[600px] relative">
-            {#if graphType === 'tax-breakdown'}
-                <canvas id="costDistributionChart" class="w-full h-full"></canvas>
-            {:else}
-                <canvas id="indexChart" class="w-full h-full"></canvas>
-            {/if}
-        </div>
-    </div>
-
-    <div class="bg-gray-800 p-4 rounded-lg mt-6">
-        <h2 class="text-xl font-semibold mb-4">Custos e Impostos</h2>
-        <div class="space-y-4">
-            <div>
-                <h3 class="font-medium text-lg">Custos de Transação</h3>
-                <div class="pl-4 space-y-2">
-                    <p>
-                        <span class="font-medium">Imposto do Selo:</span> 
-                        <span class="text-gray-300">0.2% sobre o valor da transação ({formatCurrency(sp500BuyTransactionTax + dowBuyTransactionTax + nasdaqBuyTransactionTax)} na compra, {formatCurrency(sp500SellTransactionTax + dowSellTransactionTax + nasdaqSellTransactionTax)} na venda)</span>
-                        <span class="block text-sm text-gray-400">Aplicado na compra ({formatCurrency(totalInvestment)} × 0.2%) e venda ({formatCurrency(totalFinalValue)} × 0.2%)</span>
-                    </p>
-                    <p>
-                        <span class="font-medium">Comissão do Broker:</span>
-                        <span class="text-gray-300">0.25% sobre o valor da transação ({formatCurrency(sp500BuyBrokerFee + dowBuyBrokerFee + nasdaqBuyBrokerFee + sp500SellBrokerFee + dowSellBrokerFee + nasdaqSellBrokerFee)} total)</span>
-                        <span class="block text-sm text-gray-400">Aplicado na compra ({formatCurrency(totalInvestment)} × 0.25%) e venda ({formatCurrency(totalFinalValue)} × 0.25%)</span>
-                    </p>
-                    <p>
-                        <span class="font-medium">Taxa de Acesso ao Mercado:</span>
-                        <span class="text-gray-300">0.05% sobre o valor da transação ({formatCurrency(sp500BuyMarketFee + dowBuyMarketFee + nasdaqBuyMarketFee + sp500SellMarketFee + dowSellMarketFee + nasdaqSellMarketFee)} total)</span>
-                        <span class="block text-sm text-gray-400">Aplicado na compra ({formatCurrency(totalInvestment)} × 0.05%) e venda ({formatCurrency(totalFinalValue)} × 0.05%)</span>
-                    </p>
-                    <p>
-                        <span class="font-medium">Taxa de Bolsa:</span>
-                        <span class="text-gray-300">0.02% sobre o valor da transação ({formatCurrency(sp500BuyExchangeFee + dowBuyExchangeFee + nasdaqBuyExchangeFee + sp500SellExchangeFee + dowSellExchangeFee + nasdaqSellExchangeFee)} total)</span>
-                        <span class="block text-sm text-gray-400">Aplicado na compra ({formatCurrency(totalInvestment)} × 0.02%) e venda ({formatCurrency(totalFinalValue)} × 0.02%)</span>
-                    </p>
-                </div>
-            </div>
-
-            <div>
-                <h3 class="font-medium text-lg">Custos de Manutenção</h3>
-                <div class="pl-4">
-                    <p>
-                        <span class="font-medium">Taxa de Custódia:</span>
-                        <span class="text-gray-300">€2.00 por mês ({formatCurrency(sp500CustodyFees + dowCustodyFees + nasdaqCustodyFees)} total)</span>
-                        <span class="block text-sm text-gray-400">Valor fixo de €2.00 × {monthsDiff} meses</span>
-                    </p>
-                </div>
-            </div>
-
-            <div>
-                <h3 class="font-medium text-lg">Impostos sobre Mais-Valias</h3>
-                <div class="pl-4">
-                    <p>
-                        <span class="font-medium">IRS sobre Mais-Valias:</span>
-                        <span class="text-gray-300">{(effectiveTaxRate * 100).toFixed(1)}% sobre o lucro ({formatCurrency(sp500CapitalGainsTax + dowCapitalGainsTax + nasdaqCapitalGainsTax)} total)</span>
-                        <span class="block text-sm text-gray-400">Aplicado sobre o lucro total ({formatCurrency(totalGrossProfit)} × {(effectiveTaxRate * 100).toFixed(1)}%)</span>
-                        {#if effectiveTaxRate < BASE_CAPITAL_GAINS_TAX}
-                            <span class="block text-sm text-emerald-400">Benefício fiscal aplicado por período de detenção de {holdingPeriodYears.toFixed(1)} anos</span>
-                        {/if}
-                    </p>
                 </div>
             </div>
         </div>
     </div>
 
     <div class="bg-gray-800 p-4 rounded-lg mt-4">
-        <h3 class="text-xl font-semibold mb-4">Benefícios Fiscais por Período de Detenção</h3>
-        <div class="space-y-4">
-            <div class="flex items-center justify-between">
-                <div>
-                    <p class="font-medium">Período de Detenção Atual:</p>
-                    <p class="text-gray-300">{holdingPeriodYears.toFixed(2)} anos</p>
-                </div>
-                <div>
-                    <p class="font-medium">Taxa Efetiva Atual:</p>
-                    <p class="text-gray-300">{(effectiveTaxRate * 100).toFixed(1)}%</p>
-                </div>
+        <div class="flex items-center justify-between mb-4">
+            <h2 class="text-xl font-semibold">Gráfico de Desempenho</h2>
+            <div class="flex space-x-2">
+                <button
+                    class="px-4 py-2 rounded {graphType === 'performance' ? 'bg-red-600' : 'bg-gray-700'}"
+                    on:click={() => handleGraphTypeChange('performance')}
+                >
+                    Desempenho
+                </button>
+                <button
+                    class="px-4 py-2 rounded {graphType === 'monthly-returns' ? 'bg-red-600' : 'bg-gray-700'}"
+                    on:click={() => handleGraphTypeChange('monthly-returns')}
+                >
+                    Retornos Mensais
+                </button>
+                <button
+                    class="px-4 py-2 rounded {graphType === 'cumulative-returns' ? 'bg-red-600' : 'bg-gray-700'}"
+                    on:click={() => handleGraphTypeChange('cumulative-returns')}
+                >
+                    Retorno Acumulado
+                </button>
+                <button
+                    class="px-4 py-2 rounded {graphType === 'tax-breakdown' ? 'bg-red-600' : 'bg-gray-700'}"
+                    on:click={() => handleGraphTypeChange('tax-breakdown')}
+                >
+                    Distribuição de Custos
+                </button>
             </div>
-            
-            <div class="space-y-2">
-                <div class="p-3 bg-gray-700 rounded {holdingPeriodYears <= 2 ? 'border-l-4 border-red-500' : ''}">
-                    <p class="font-medium">Até 2 anos</p>
-                    <p class="text-sm text-gray-300">Taxa normal de 28% sobre mais-valias</p>
-                </div>
-                <div class="p-3 bg-gray-700 rounded {holdingPeriodYears > 2 && holdingPeriodYears <= 5 ? 'border-l-4 border-yellow-500' : ''}">
-                    <p class="font-medium">Entre 2 e 5 anos</p>
-                    <p class="text-sm text-gray-300">10% de isenção (Taxa efetiva: 25,2%)</p>
-                </div>
-                <div class="p-3 bg-gray-700 rounded {holdingPeriodYears > 5 && holdingPeriodYears <= 8 ? 'border-l-4 border-green-500' : ''}">
-                    <p class="font-medium">Entre 5 e 8 anos</p>
-                    <p class="text-sm text-gray-300">20% de isenção (Taxa efetiva: 22,4%)</p>
-                </div>
-                <div class="p-3 bg-gray-700 rounded {holdingPeriodYears > 8 ? 'border-l-4 border-blue-500' : ''}">
-                    <p class="font-medium">Superior a 8 anos</p>
-                    <p class="text-sm text-gray-300">30% de isenção (Taxa efetiva: 19,6%)</p>
-                </div>
-            </div>
+        </div>
+        <div class="h-[400px] relative">
+            {#if graphType === 'performance'}
+                <canvas bind:this={performanceCanvas}></canvas>
+            {:else if graphType === 'monthly-returns'}
+                <canvas bind:this={monthlyReturnsCanvas}></canvas>
+            {:else if graphType === 'cumulative-returns'}
+                <canvas bind:this={cumulativeReturnsCanvas}></canvas>
+            {:else}
+                <canvas bind:this={taxBreakdownCanvas}></canvas>
+            {/if}
         </div>
     </div>
 
@@ -1255,6 +1085,100 @@
                 <li>Reinvestimento de todos os dividendos</li>
                 <li>Não considera custos adicionais de manutenção ou inflação</li>
             </ul>
+        </div>
+    </div>
+
+    <div class="bg-gray-800 p-4 rounded-lg mt-4">
+        <h2 class="text-xl font-semibold mb-4">Detalhamento de Custos e Impostos</h2>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div class="space-y-4">
+                <div class="bg-gray-700 p-3 rounded">
+                    <h3 class="font-medium mb-2">Custos de Compra</h3>
+                    <div class="space-y-2">
+                        <div class="flex justify-between">
+                            <span class="text-sm">Imposto do Selo (0.2%)</span>
+                            <span class="text-sm text-red-400">-{formatCurrency(sp500BuyTransactionTax + dowBuyTransactionTax + nasdaqBuyTransactionTax)}</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-sm">Comissão do Broker (0.25%)</span>
+                            <span class="text-sm text-red-400">-{formatCurrency(sp500BuyBrokerFee + dowBuyBrokerFee + nasdaqBuyBrokerFee)}</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-sm">Taxa de Acesso ao Mercado (0.05%)</span>
+                            <span class="text-sm text-red-400">-{formatCurrency(sp500BuyMarketFee + dowBuyMarketFee + nasdaqBuyMarketFee)}</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-sm">Taxa de Bolsa (0.02%)</span>
+                            <span class="text-sm text-red-400">-{formatCurrency(sp500BuyExchangeFee + dowBuyExchangeFee + nasdaqBuyExchangeFee)}</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-gray-700 p-3 rounded">
+                    <h3 class="font-medium mb-2">Custos de Venda</h3>
+                    <div class="space-y-2">
+                        <div class="flex justify-between">
+                            <span class="text-sm">Imposto do Selo (0.2%)</span>
+                            <span class="text-sm text-red-400">-{formatCurrency(sp500SellTransactionTax + dowSellTransactionTax + nasdaqSellTransactionTax)}</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-sm">Comissão do Broker (0.25%)</span>
+                            <span class="text-sm text-red-400">-{formatCurrency(sp500SellBrokerFee + dowSellBrokerFee + nasdaqSellBrokerFee)}</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-sm">Taxa de Acesso ao Mercado (0.05%)</span>
+                            <span class="text-sm text-red-400">-{formatCurrency(sp500SellMarketFee + dowSellMarketFee + nasdaqSellMarketFee)}</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-sm">Taxa de Bolsa (0.02%)</span>
+                            <span class="text-sm text-red-400">-{formatCurrency(sp500SellExchangeFee + dowSellExchangeFee + nasdaqSellExchangeFee)}</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="space-y-4">
+                <div class="bg-gray-700 p-3 rounded">
+                    <h3 class="font-medium mb-2">Custos de Manutenção</h3>
+                    <div class="space-y-2">
+                        <div class="flex justify-between">
+                            <span class="text-sm">Taxa de Custódia (€2/mês)</span>
+                            <span class="text-sm text-red-400">-{formatCurrency(sp500CustodyFees + dowCustodyFees + nasdaqCustodyFees)}</span>
+                        </div>
+                        <p class="text-xs text-gray-400">Período: {monthsDiff} meses</p>
+                    </div>
+                </div>
+
+                <div class="bg-gray-700 p-3 rounded">
+                    <h3 class="font-medium mb-2">Resumo de Custos</h3>
+                    <div class="space-y-2">
+                        <div class="flex justify-between">
+                            <span class="text-sm">Total de Custos de Compra</span>
+                            <span class="text-sm text-red-400">-{formatCurrency(sp500TotalBuyFees + dowTotalBuyFees + nasdaqTotalBuyFees)}</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-sm">Total de Custos de Venda</span>
+                            <span class="text-sm text-red-400">-{formatCurrency(sp500TotalSellFees + dowTotalSellFees + nasdaqTotalSellFees)}</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-sm">Total de Custos de Manutenção</span>
+                            <span class="text-sm text-red-400">-{formatCurrency(sp500CustodyFees + dowCustodyFees + nasdaqCustodyFees)}</span>
+                        </div>
+                        <div class="flex justify-between font-medium pt-2 border-t border-gray-600">
+                            <span>Total de Custos</span>
+                            <span class="text-red-400">-{formatCurrency(totalFees)}</span>
+                        </div>
+                        <div class="flex justify-between font-medium">
+                            <span>Total de Impostos</span>
+                            <span class="text-red-400">-{formatCurrency(totalTaxes)}</span>
+                        </div>
+                        <div class="flex justify-between font-medium">
+                            <span>Total Geral</span>
+                            <span class="text-red-400">-{formatCurrency(totalCosts)}</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 </div>
