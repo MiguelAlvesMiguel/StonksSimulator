@@ -65,11 +65,28 @@
     
     // Portuguese tax rates and fees
     const TRANSACTION_TAX = 0.002; // 0.2% Imposto do Selo
-    const CAPITAL_GAINS_TAX = 0.28; // 28% sobre mais-valias
+    const BASE_CAPITAL_GAINS_TAX = 0.28; // 28% base rate sobre mais-valias
     const BROKER_FEE = 0.0025; // 0.25% comissão do broker
     const CUSTODY_FEE_MONTHLY = 2; // €2/mês taxa de custódia
     const MARKET_ACCESS_FEE = 0.0005; // 0.05% taxa de acesso ao mercado
     const EXCHANGE_FEE = 0.0002; // 0.02% taxa de bolsa
+
+    // Tax incentives based on holding period
+    function getEffectiveTaxRate(years: number): number {
+        if (years > 8) return BASE_CAPITAL_GAINS_TAX * 0.7; // 30% exempt = 19.6% effective rate
+        if (years > 5) return BASE_CAPITAL_GAINS_TAX * 0.8; // 20% exempt = 22.4% effective rate
+        if (years > 2) return BASE_CAPITAL_GAINS_TAX * 0.9; // 10% exempt = 25.2% effective rate
+        return BASE_CAPITAL_GAINS_TAX; // No exemption = 28% rate
+    }
+
+    // Calculate holding period in years
+    $: holdingPeriodYears = monthsDiff / 12;
+    $: effectiveTaxRate = getEffectiveTaxRate(holdingPeriodYears);
+
+    // Update capital gains tax calculations with effective rate
+    $: sp500CapitalGainsTax = sp500GrossProfit > 0 ? sp500GrossProfit * effectiveTaxRate : 0;
+    $: dowCapitalGainsTax = dowGrossProfit > 0 ? dowGrossProfit * effectiveTaxRate : 0;
+    $: nasdaqCapitalGainsTax = nasdaqGrossProfit > 0 ? nasdaqGrossProfit * effectiveTaxRate : 0;
 
     // Update all investment amount calculations to use the new investments object
     $: investmentAmount = viewMode === 'SP500' ? investments.sp500 : 
@@ -103,9 +120,6 @@
     $: sp500SellExchangeFee = sp500FinalValue * EXCHANGE_FEE;
     $: sp500TotalSellFees = sp500SellTransactionTax + sp500SellBrokerFee + sp500SellMarketFee + sp500SellExchangeFee;
 
-    // S&P 500 Capital gains tax
-    $: sp500CapitalGainsTax = sp500GrossProfit > 0 ? sp500GrossProfit * CAPITAL_GAINS_TAX : 0;
-    
     // S&P 500 Custody fees (monthly)
     $: monthsDiff = Math.ceil((new Date(sp500Data[sp500Data.length - 1].date).getTime() - new Date(sp500Data[0].date).getTime()) / (1000 * 60 * 60 * 24 * 30));
     $: sp500CustodyFees = CUSTODY_FEE_MONTHLY * monthsDiff;
@@ -134,9 +148,6 @@
     $: dowSellExchangeFee = dowFinalValue * EXCHANGE_FEE;
     $: dowTotalSellFees = dowSellTransactionTax + dowSellBrokerFee + dowSellMarketFee + dowSellExchangeFee;
 
-    // Dow Jones Capital gains tax
-    $: dowCapitalGainsTax = dowGrossProfit > 0 ? dowGrossProfit * CAPITAL_GAINS_TAX : 0;
-    
     // Dow Jones Custody fees (monthly)
     $: dowCustodyFees = CUSTODY_FEE_MONTHLY * monthsDiff;
 
@@ -164,9 +175,6 @@
     $: nasdaqSellExchangeFee = nasdaqFinalValue * EXCHANGE_FEE;
     $: nasdaqTotalSellFees = nasdaqSellTransactionTax + nasdaqSellBrokerFee + nasdaqSellMarketFee + nasdaqSellExchangeFee;
 
-    // NASDAQ Capital gains tax
-    $: nasdaqCapitalGainsTax = nasdaqGrossProfit > 0 ? nasdaqGrossProfit * CAPITAL_GAINS_TAX : 0;
-    
     // NASDAQ Custody fees (monthly)
     $: nasdaqCustodyFees = CUSTODY_FEE_MONTHLY * monthsDiff;
 
@@ -664,6 +672,36 @@
             }, 500);
         }
     }
+
+    // Add projection calculations
+    function calculateProjectedValue(currentValue: number, years: number, annualGrowthRate = 0.10): {
+        projectedValue: number;
+        effectiveTax: number;
+        taxSavings: number;
+        netValue: number;
+    } {
+        const projectedValue = currentValue * Math.pow(1 + annualGrowthRate, years);
+        const grossProfit = projectedValue - currentValue;
+        const effectiveTax = getEffectiveTaxRate(years);
+        const taxAmount = grossProfit * effectiveTax;
+        const taxAmountWithoutBenefit = grossProfit * BASE_CAPITAL_GAINS_TAX;
+        const taxSavings = taxAmountWithoutBenefit - taxAmount;
+        const netValue = projectedValue - taxAmount;
+        
+        return {
+            projectedValue,
+            effectiveTax,
+            taxSavings,
+            netValue
+        };
+    }
+
+    // Calculate projections for different holding periods
+    $: projections = {
+        threeYears: calculateProjectedValue(totalFinalValue, 3),
+        sixYears: calculateProjectedValue(totalFinalValue, 6),
+        nineYears: calculateProjectedValue(totalFinalValue, 9)
+    };
 </script>
 
 <div class="container mx-auto p-4 bg-gray-900 text-white min-h-screen relative">
@@ -1016,9 +1054,14 @@
                     <div class="pl-4 mt-2">
                         <h4 class="font-medium">Impostos sobre Mais-Valias</h4>
                         <div class="pl-4 space-y-1 text-sm">
-                            <p>S&P 500 (28%): {formatCurrency(sp500CapitalGainsTax)}</p>
-                            <p>Dow Jones (28%): {formatCurrency(dowCapitalGainsTax)}</p>
-                            <p>NASDAQ (28%): {formatCurrency(nasdaqCapitalGainsTax)}</p>
+                            <p>
+                                <span class="font-medium">IRS sobre Mais-Valias:</span>
+                                <span class="text-gray-300">{(effectiveTaxRate * 100).toFixed(1)}% sobre o lucro ({formatCurrency(sp500CapitalGainsTax + dowCapitalGainsTax + nasdaqCapitalGainsTax)} total)</span>
+                                <span class="block text-sm text-gray-400">Aplicado sobre o lucro total ({formatCurrency(totalGrossProfit)} × {(effectiveTaxRate * 100).toFixed(1)}%)</span>
+                                {#if effectiveTaxRate < BASE_CAPITAL_GAINS_TAX}
+                                    <span class="block text-sm text-emerald-400">Benefício fiscal aplicado por período de detenção de {holdingPeriodYears.toFixed(1)} anos</span>
+                                {/if}
+                            </p>
                         </div>
                     </div>
 
@@ -1125,11 +1168,93 @@
                 <div class="pl-4">
                     <p>
                         <span class="font-medium">IRS sobre Mais-Valias:</span>
-                        <span class="text-gray-300">28% sobre o lucro ({formatCurrency(sp500CapitalGainsTax + dowCapitalGainsTax + nasdaqCapitalGainsTax)} total)</span>
-                        <span class="block text-sm text-gray-400">Aplicado sobre o lucro total ({formatCurrency(totalGrossProfit)} × 28%)</span>
+                        <span class="text-gray-300">{(effectiveTaxRate * 100).toFixed(1)}% sobre o lucro ({formatCurrency(sp500CapitalGainsTax + dowCapitalGainsTax + nasdaqCapitalGainsTax)} total)</span>
+                        <span class="block text-sm text-gray-400">Aplicado sobre o lucro total ({formatCurrency(totalGrossProfit)} × {(effectiveTaxRate * 100).toFixed(1)}%)</span>
+                        {#if effectiveTaxRate < BASE_CAPITAL_GAINS_TAX}
+                            <span class="block text-sm text-emerald-400">Benefício fiscal aplicado por período de detenção de {holdingPeriodYears.toFixed(1)} anos</span>
+                        {/if}
                     </p>
                 </div>
             </div>
+        </div>
+    </div>
+
+    <div class="bg-gray-800 p-4 rounded-lg mt-4">
+        <h3 class="text-xl font-semibold mb-4">Benefícios Fiscais por Período de Detenção</h3>
+        <div class="space-y-4">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="font-medium">Período de Detenção Atual:</p>
+                    <p class="text-gray-300">{holdingPeriodYears.toFixed(2)} anos</p>
+                </div>
+                <div>
+                    <p class="font-medium">Taxa Efetiva Atual:</p>
+                    <p class="text-gray-300">{(effectiveTaxRate * 100).toFixed(1)}%</p>
+                </div>
+            </div>
+            
+            <div class="space-y-2">
+                <div class="p-3 bg-gray-700 rounded {holdingPeriodYears <= 2 ? 'border-l-4 border-red-500' : ''}">
+                    <p class="font-medium">Até 2 anos</p>
+                    <p class="text-sm text-gray-300">Taxa normal de 28% sobre mais-valias</p>
+                </div>
+                <div class="p-3 bg-gray-700 rounded {holdingPeriodYears > 2 && holdingPeriodYears <= 5 ? 'border-l-4 border-yellow-500' : ''}">
+                    <p class="font-medium">Entre 2 e 5 anos</p>
+                    <p class="text-sm text-gray-300">10% de isenção (Taxa efetiva: 25,2%)</p>
+                </div>
+                <div class="p-3 bg-gray-700 rounded {holdingPeriodYears > 5 && holdingPeriodYears <= 8 ? 'border-l-4 border-green-500' : ''}">
+                    <p class="font-medium">Entre 5 e 8 anos</p>
+                    <p class="text-sm text-gray-300">20% de isenção (Taxa efetiva: 22,4%)</p>
+                </div>
+                <div class="p-3 bg-gray-700 rounded {holdingPeriodYears > 8 ? 'border-l-4 border-blue-500' : ''}">
+                    <p class="font-medium">Superior a 8 anos</p>
+                    <p class="text-sm text-gray-300">30% de isenção (Taxa efetiva: 19,6%)</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="bg-gray-800 p-4 rounded-lg mt-4">
+        <h3 class="text-xl font-semibold mb-4">Projeção de Valor Futuro e Benefícios Fiscais</h3>
+        <p class="text-sm text-gray-400 mb-4">
+            Projeção baseada no valor final atual de {formatCurrency(totalFinalValue)} com crescimento anual estimado de 10%
+        </p>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div class="p-4 bg-gray-700 rounded-lg border-l-4 border-yellow-500">
+                <h4 class="font-semibold mb-2">Em 3 Anos (Taxa: {(projections.threeYears.effectiveTax * 100).toFixed(1)}%)</h4>
+                <div class="space-y-2">
+                    <p>Valor Projetado: {formatCurrency(projections.threeYears.projectedValue)}</p>
+                    <p>Valor Líquido: {formatCurrency(projections.threeYears.netValue)}</p>
+                    <p class="text-emerald-400">Economia em Impostos: {formatCurrency(projections.threeYears.taxSavings)}</p>
+                </div>
+            </div>
+            
+            <div class="p-4 bg-gray-700 rounded-lg border-l-4 border-green-500">
+                <h4 class="font-semibold mb-2">Em 6 Anos (Taxa: {(projections.sixYears.effectiveTax * 100).toFixed(1)}%)</h4>
+                <div class="space-y-2">
+                    <p>Valor Projetado: {formatCurrency(projections.sixYears.projectedValue)}</p>
+                    <p>Valor Líquido: {formatCurrency(projections.sixYears.netValue)}</p>
+                    <p class="text-emerald-400">Economia em Impostos: {formatCurrency(projections.sixYears.taxSavings)}</p>
+                </div>
+            </div>
+            
+            <div class="p-4 bg-gray-700 rounded-lg border-l-4 border-blue-500">
+                <h4 class="font-semibold mb-2">Em 9 Anos (Taxa: {(projections.nineYears.effectiveTax * 100).toFixed(1)}%)</h4>
+                <div class="space-y-2">
+                    <p>Valor Projetado: {formatCurrency(projections.nineYears.projectedValue)}</p>
+                    <p>Valor Líquido: {formatCurrency(projections.nineYears.netValue)}</p>
+                    <p class="text-emerald-400">Economia em Impostos: {formatCurrency(projections.nineYears.taxSavings)}</p>
+                </div>
+            </div>
+        </div>
+        <div class="mt-4 text-sm text-gray-400">
+            <p>* As projeções assumem:</p>
+            <ul class="list-disc list-inside pl-4 space-y-1">
+                <li>Crescimento anual médio de 10% (baseado em retornos históricos de longo prazo)</li>
+                <li>Manutenção do atual regime fiscal de benefícios por tempo de detenção</li>
+                <li>Reinvestimento de todos os dividendos</li>
+                <li>Não considera custos adicionais de manutenção ou inflação</li>
+            </ul>
         </div>
     </div>
 </div>
