@@ -18,7 +18,8 @@ function parseCSV(csvData: string) {
                 date,
                 value: parseFloat(value)
             };
-        });
+        })
+        .reverse(); // Reverse here to get chronological order (oldest to newest)
 }
 
 // USD to EUR conversion rate
