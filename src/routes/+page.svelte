@@ -1000,7 +1000,7 @@
             class="px-4 py-2 rounded {selectedYear === '2025' ? 'bg-red-600' : 'bg-gray-700'}"
             on:click={() => selectedYear = '2025'}
         >
-            Dados 2025
+            Dados 2025 (Incompleto e Inventado)
         </button>
     </div>
 
@@ -1353,50 +1353,49 @@
             </div>
         </div>
     </div>
-
-    <div class="bg-gray-800 p-4 rounded-lg mt-4">
-        <h3 class="text-xl font-semibold mb-4">Projeção de Valor Futuro e Benefícios Fiscais</h3>
-        <p class="text-sm text-gray-400 mb-4">
-            Projeção baseada no valor final atual de {formatCurrency(totalFinalValue)} com crescimento anual estimado de 10%
-        </p>
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div class="p-4 bg-gray-700 rounded-lg border-l-4 border-yellow-500">
-                <h4 class="font-semibold mb-2">Em 3 Anos (Taxa: {(projections.threeYears.effectiveTax * 100).toFixed(1)}%)</h4>
-                <div class="space-y-2">
-                    <p>Valor Projetado: {formatCurrency(projections.threeYears.projectedValue)}</p>
-                    <p>Valor Líquido: {formatCurrency(projections.threeYears.netValue)}</p>
-                    <p class="text-emerald-400">Economia em Impostos: {formatCurrency(projections.threeYears.taxSavings)}</p>
-                </div>
-            </div>
-            
-            <div class="p-4 bg-gray-700 rounded-lg border-l-4 border-green-500">
-                <h4 class="font-semibold mb-2">Em 6 Anos (Taxa: {(projections.sixYears.effectiveTax * 100).toFixed(1)}%)</h4>
-                <div class="space-y-2">
-                    <p>Valor Projetado: {formatCurrency(projections.sixYears.projectedValue)}</p>
-                    <p>Valor Líquido: {formatCurrency(projections.sixYears.netValue)}</p>
-                    <p class="text-emerald-400">Economia em Impostos: {formatCurrency(projections.sixYears.taxSavings)}</p>
-                </div>
-            </div>
-            
-            <div class="p-4 bg-gray-700 rounded-lg border-l-4 border-blue-500">
-                <h4 class="font-semibold mb-2">Em 9 Anos (Taxa: {(projections.nineYears.effectiveTax * 100).toFixed(1)}%)</h4>
-                <div class="space-y-2">
-                    <p>Valor Projetado: {formatCurrency(projections.nineYears.projectedValue)}</p>
-                    <p>Valor Líquido: {formatCurrency(projections.nineYears.netValue)}</p>
-                    <p class="text-emerald-400">Economia em Impostos: {formatCurrency(projections.nineYears.taxSavings)}</p>
-                </div>
+    <div class="bg-gray-800 p-4 rounded-lg">
+        <div class="flex items-center justify-between mb-4">
+            <h2 class="text-xl font-semibold">Gráfico de Desempenho</h2>
+            <div class="flex space-x-2">
+                <button
+                    class="px-4 py-2 rounded {graphType === 'performance' ? 'bg-red-600' : 'bg-gray-700'}"
+                    on:click={() => handleGraphTypeChange('performance')}
+                >
+                    Desempenho
+                </button>
+                <button
+                    class="px-4 py-2 rounded {graphType === 'monthly-returns' ? 'bg-red-600' : 'bg-gray-700'}"
+                    on:click={() => handleGraphTypeChange('monthly-returns')}
+                >
+                    Retornos Mensais
+                </button>
+                <button
+                    class="px-4 py-2 rounded {graphType === 'cumulative-returns' ? 'bg-red-600' : 'bg-gray-700'}"
+                    on:click={() => handleGraphTypeChange('cumulative-returns')}
+                >
+                    Retorno Acumulado
+                </button>
+                <button
+                    class="px-4 py-2 rounded {graphType === 'tax-breakdown' ? 'bg-red-600' : 'bg-gray-700'}"
+                    on:click={() => handleGraphTypeChange('tax-breakdown')}
+                >
+                    Distribuição de Custos
+                </button>
             </div>
         </div>
-        <div class="mt-4 text-sm text-gray-400">
-            <p>* As projeções assumem:</p>
-            <ul class="list-disc list-inside pl-4 space-y-1">
-                <li>Crescimento anual médio de 10% (baseado em retornos históricos de longo prazo)</li>
-                <li>Manutenção do atual regime fiscal de benefícios por tempo de detenção</li>
-                <li>Reinvestimento de todos os dividendos</li>
-                <li>Não considera custos adicionais de manutenção ou inflação</li>
-            </ul>
+        <div class="h-[400px] relative">
+            {#if graphType === 'performance'}
+                <canvas bind:this={performanceCanvas}></canvas>
+            {:else if graphType === 'monthly-returns'}
+                <canvas bind:this={monthlyReturnsCanvas}></canvas>
+            {:else if graphType === 'cumulative-returns'}
+                <canvas bind:this={cumulativeReturnsCanvas}></canvas>
+            {:else}
+                <canvas bind:this={taxBreakdownCanvas}></canvas>
+            {/if}
         </div>
     </div>
+ 
 
     <div class="bg-gray-800 p-4 rounded-lg mt-4">
         <h2 class="text-xl font-semibold mb-4">Detalhamento de Custos e Impostos</h2>
@@ -1491,50 +1490,51 @@
             </div>
         </div>
     </div>
-
-    <!-- Graph Section -->
-    <div class="bg-gray-800 p-4 rounded-lg">
-        <div class="flex items-center justify-between mb-4">
-            <h2 class="text-xl font-semibold">Gráfico de Desempenho</h2>
-            <div class="flex space-x-2">
-                <button
-                    class="px-4 py-2 rounded {graphType === 'performance' ? 'bg-red-600' : 'bg-gray-700'}"
-                    on:click={() => handleGraphTypeChange('performance')}
-                >
-                    Desempenho
-                </button>
-                <button
-                    class="px-4 py-2 rounded {graphType === 'monthly-returns' ? 'bg-red-600' : 'bg-gray-700'}"
-                    on:click={() => handleGraphTypeChange('monthly-returns')}
-                >
-                    Retornos Mensais
-                </button>
-                <button
-                    class="px-4 py-2 rounded {graphType === 'cumulative-returns' ? 'bg-red-600' : 'bg-gray-700'}"
-                    on:click={() => handleGraphTypeChange('cumulative-returns')}
-                >
-                    Retorno Acumulado
-                </button>
-                <button
-                    class="px-4 py-2 rounded {graphType === 'tax-breakdown' ? 'bg-red-600' : 'bg-gray-700'}"
-                    on:click={() => handleGraphTypeChange('tax-breakdown')}
-                >
-                    Distribuição de Custos
-                </button>
+    <div class="bg-gray-800 p-4 rounded-lg mt-4">
+        <h3 class="text-xl font-semibold mb-4">Projeção de Valor Futuro e Benefícios Fiscais</h3>
+        <p class="text-sm text-gray-400 mb-4">
+            Projeção baseada no valor final atual de {formatCurrency(totalFinalValue)} com crescimento anual estimado de 10%
+        </p>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div class="p-4 bg-gray-700 rounded-lg border-l-4 border-yellow-500">
+                <h4 class="font-semibold mb-2">Em 3 Anos (Taxa: {(projections.threeYears.effectiveTax * 100).toFixed(1)}%)</h4>
+                <div class="space-y-2">
+                    <p>Valor Projetado: {formatCurrency(projections.threeYears.projectedValue)}</p>
+                    <p>Valor Líquido: {formatCurrency(projections.threeYears.netValue)}</p>
+                    <p class="text-emerald-400">Economia em Impostos: {formatCurrency(projections.threeYears.taxSavings)}</p>
+                </div>
+            </div>
+            
+            <div class="p-4 bg-gray-700 rounded-lg border-l-4 border-green-500">
+                <h4 class="font-semibold mb-2">Em 6 Anos (Taxa: {(projections.sixYears.effectiveTax * 100).toFixed(1)}%)</h4>
+                <div class="space-y-2">
+                    <p>Valor Projetado: {formatCurrency(projections.sixYears.projectedValue)}</p>
+                    <p>Valor Líquido: {formatCurrency(projections.sixYears.netValue)}</p>
+                    <p class="text-emerald-400">Economia em Impostos: {formatCurrency(projections.sixYears.taxSavings)}</p>
+                </div>
+            </div>
+            
+            <div class="p-4 bg-gray-700 rounded-lg border-l-4 border-blue-500">
+                <h4 class="font-semibold mb-2">Em 9 Anos (Taxa: {(projections.nineYears.effectiveTax * 100).toFixed(1)}%)</h4>
+                <div class="space-y-2">
+                    <p>Valor Projetado: {formatCurrency(projections.nineYears.projectedValue)}</p>
+                    <p>Valor Líquido: {formatCurrency(projections.nineYears.netValue)}</p>
+                    <p class="text-emerald-400">Economia em Impostos: {formatCurrency(projections.nineYears.taxSavings)}</p>
+                </div>
             </div>
         </div>
-        <div class="h-[400px] relative">
-            {#if graphType === 'performance'}
-                <canvas bind:this={performanceCanvas}></canvas>
-            {:else if graphType === 'monthly-returns'}
-                <canvas bind:this={monthlyReturnsCanvas}></canvas>
-            {:else if graphType === 'cumulative-returns'}
-                <canvas bind:this={cumulativeReturnsCanvas}></canvas>
-            {:else}
-                <canvas bind:this={taxBreakdownCanvas}></canvas>
-            {/if}
+        <div class="mt-4 text-sm text-gray-400">
+            <p>* As projeções assumem:</p>
+            <ul class="list-disc list-inside pl-4 space-y-1">
+                <li>Crescimento anual médio de 10% (baseado em retornos históricos de longo prazo)</li>
+                <li>Manutenção do atual regime fiscal de benefícios por tempo de detenção</li>
+                <li>Reinvestimento de todos os dividendos</li>
+                <li>Não considera custos adicionais de manutenção ou inflação</li>
+            </ul>
         </div>
     </div>
+    <!-- Graph Section -->
+ 
 </div>
 
 <style>
