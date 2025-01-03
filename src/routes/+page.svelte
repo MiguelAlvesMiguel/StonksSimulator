@@ -5,12 +5,15 @@
     import { browser } from '$app/environment';
     import { Chart, type ChartConfiguration } from 'chart.js/auto';
     import type { ChartEvent } from 'chart.js';
+    import StockPerformance from '$lib/components/StockPerformance.svelte';
 
     let selectedYear = '2024';
     let investments = {
-        sp500: 10000,
-        dow: 10000,
-        nasdaq: 10000
+        sp500: 2500,
+        dow: 2500,
+        nasdaq: 2500,
+        nanc: 2500,
+        nvda: 0
     };
     let chart: Chart | null = null;
     let viewMode: 'SP500' | 'DOW' | 'NASDAQ' | 'COMBINED' = 'COMBINED';
@@ -52,16 +55,18 @@
     }
 
     function deleteInvestment(index: string) {
-        if (index === 'sp500' || index === 'dow' || index === 'nasdaq') {
-            investments[index] = 0;
-            updateChart();
-        }
+        investments[index as keyof typeof investments] = 0;
+        visibleStocks.delete(index);
+        visibleStocks = visibleStocks; // Trigger reactivity
+        updateChart();
     }
 
     $: historicalData = selectedYear === '2024' ? $historical2024Data : $historical2025Data;
     $: sp500Data = [...historicalData.SP500];
     $: dowData = [...historicalData.DOW];
     $: nasdaqData = [...historicalData.NASDAQ];
+    $: nancData = [...historicalData.NANC];
+    $: nvdaData = [...historicalData.NVDA];
     
     // Portuguese tax rates and fees
     const TRANSACTION_TAX = 0.002; // 0.2% Imposto do Selo
@@ -183,13 +188,69 @@
     $: nasdaqTotalCosts = nasdaqTotalFees + nasdaqTotalTaxes;
     $: nasdaqNetProfit = nasdaqGrossProfit - nasdaqTotalCosts;
 
+    // Calculate metrics for NANC
+    $: nancShares = investments.nanc / nancData[0].value;
+    $: nancFinalValue = nancShares * nancData[nancData.length - 1].value;
+    $: nancGrossProfit = nancFinalValue - investments.nanc;
+
+    // NANC Buy fees
+    $: nancBuyTransactionTax = investments.nanc * TRANSACTION_TAX;
+    $: nancBuyBrokerFee = investments.nanc * BROKER_FEE;
+    $: nancBuyMarketFee = investments.nanc * MARKET_ACCESS_FEE;
+    $: nancBuyExchangeFee = investments.nanc * EXCHANGE_FEE;
+    $: nancTotalBuyFees = nancBuyTransactionTax + nancBuyBrokerFee + nancBuyMarketFee + nancBuyExchangeFee;
+
+    // NANC Sell fees
+    $: nancSellTransactionTax = nancFinalValue * TRANSACTION_TAX;
+    $: nancSellBrokerFee = nancFinalValue * BROKER_FEE;
+    $: nancSellMarketFee = nancFinalValue * MARKET_ACCESS_FEE;
+    $: nancSellExchangeFee = nancFinalValue * EXCHANGE_FEE;
+    $: nancTotalSellFees = nancSellTransactionTax + nancSellBrokerFee + nancSellMarketFee + nancSellExchangeFee;
+
+    // NANC Custody fees (monthly)
+    $: nancCustodyFees = CUSTODY_FEE_MONTHLY * monthsDiff;
+
+    $: nancTotalFees = nancTotalBuyFees + nancTotalSellFees + nancCustodyFees;
+    $: nancCapitalGainsTax = nancGrossProfit > 0 ? nancGrossProfit * effectiveTaxRate : 0;
+    $: nancTotalTaxes = nancCapitalGainsTax;
+    $: nancTotalCosts = nancTotalFees + nancTotalTaxes;
+    $: nancNetProfit = nancGrossProfit - nancTotalCosts;
+
+    // Calculate metrics for NVDA
+    $: nvdaShares = investments.nvda / nvdaData[0].value;
+    $: nvdaFinalValue = nvdaShares * nvdaData[nvdaData.length - 1].value;
+    $: nvdaGrossProfit = nvdaFinalValue - investments.nvda;
+
+    // NVDA Buy fees
+    $: nvdaBuyTransactionTax = investments.nvda * TRANSACTION_TAX;
+    $: nvdaBuyBrokerFee = investments.nvda * BROKER_FEE;
+    $: nvdaBuyMarketFee = investments.nvda * MARKET_ACCESS_FEE;
+    $: nvdaBuyExchangeFee = investments.nvda * EXCHANGE_FEE;
+    $: nvdaTotalBuyFees = nvdaBuyTransactionTax + nvdaBuyBrokerFee + nvdaBuyMarketFee + nvdaBuyExchangeFee;
+
+    // NVDA Sell fees
+    $: nvdaSellTransactionTax = nvdaFinalValue * TRANSACTION_TAX;
+    $: nvdaSellBrokerFee = nvdaFinalValue * BROKER_FEE;
+    $: nvdaSellMarketFee = nvdaFinalValue * MARKET_ACCESS_FEE;
+    $: nvdaSellExchangeFee = nvdaFinalValue * EXCHANGE_FEE;
+    $: nvdaTotalSellFees = nvdaSellTransactionTax + nvdaSellBrokerFee + nvdaSellMarketFee + nvdaSellExchangeFee;
+
+    // NVDA Custody fees (monthly)
+    $: nvdaCustodyFees = CUSTODY_FEE_MONTHLY * monthsDiff;
+
+    $: nvdaTotalFees = nvdaTotalBuyFees + nvdaTotalSellFees + nvdaCustodyFees;
+    $: nvdaCapitalGainsTax = nvdaGrossProfit > 0 ? nvdaGrossProfit * effectiveTaxRate : 0;
+    $: nvdaTotalTaxes = nvdaCapitalGainsTax;
+    $: nvdaTotalCosts = nvdaTotalFees + nvdaTotalTaxes;
+    $: nvdaNetProfit = nvdaGrossProfit - nvdaTotalCosts;
+
     // Calculate combined portfolio metrics
-    $: totalFinalValue = sp500FinalValue + dowFinalValue + nasdaqFinalValue;
-    $: totalGrossProfit = sp500GrossProfit + dowGrossProfit + nasdaqGrossProfit;
-    $: totalFees = sp500TotalFees + dowTotalFees + nasdaqTotalFees;
-    $: totalTaxes = sp500TotalTaxes + dowTotalTaxes + nasdaqTotalTaxes;
-    $: totalCosts = sp500TotalCosts + dowTotalCosts + nasdaqTotalCosts;
-    $: totalNetProfit = sp500NetProfit + dowNetProfit + nasdaqNetProfit;
+    $: totalFinalValue = sp500FinalValue + dowFinalValue + nasdaqFinalValue + nancFinalValue + nvdaFinalValue;
+    $: totalGrossProfit = sp500GrossProfit + dowGrossProfit + nasdaqGrossProfit + nancGrossProfit + nvdaGrossProfit;
+    $: totalFees = sp500TotalFees + dowTotalFees + nasdaqTotalFees + nancTotalFees + nvdaTotalFees;
+    $: totalTaxes = sp500TotalTaxes + dowTotalTaxes + nasdaqTotalTaxes + nancTotalTaxes + nvdaTotalTaxes;
+    $: totalCosts = sp500TotalCosts + dowTotalCosts + nasdaqTotalCosts + nancTotalCosts + nvdaTotalCosts;
+    $: totalNetProfit = sp500NetProfit + dowNetProfit + nasdaqNetProfit + nancNetProfit + nvdaNetProfit;
     $: totalReturnPercentage = (totalNetProfit / totalInvestment) * 100;
 
     function formatCurrency(value: number): string {
@@ -224,12 +285,7 @@
         return `${months} meses e ${remainingDays} dias`;
     }
 
-    let visibleStocks = {
-        sp500Index: false,
-        dowIndex: true,
-        nasdaqIndex: true,
-        totalPortfolio: true
-    };
+    let visibleStocks = new Set(['sp500', 'dow', 'nasdaq', 'nanc', 'nvda', 'totalPortfolio']);
 
     // Add function to calculate growth percentages
     function calculateGrowth(currentValue: number, initialValue: number): { absolute: number; relative: number } {
@@ -261,12 +317,16 @@
 
         let previousValue = (sp500Shares * filteredData[0].value) + 
                           (dowShares * dowData[0].value) + 
-                          (nasdaqShares * nasdaqData[0].value);
+                          (nasdaqShares * nasdaqData[0].value) +
+                          (nancShares * nancData[0].value) +
+                          (nvdaShares * nvdaData[0].value);
 
         for (let i = 1; i < filteredData.length; i++) {
             const currentValue = (sp500Shares * filteredData[i].value) + 
                                (dowShares * dowData[i].value) + 
-                               (nasdaqShares * nasdaqData[i].value);
+                               (nasdaqShares * nasdaqData[i].value) +
+                               (nancShares * nancData[i].value) +
+                               (nvdaShares * nvdaData[i].value);
             const monthlyReturn = ((currentValue - previousValue) / previousValue) * 100;
             monthlyData.push({ date: filteredData[i].date, return: monthlyReturn });
             previousValue = currentValue;
@@ -289,7 +349,9 @@
         filteredData.forEach((data, i) => {
             const totalValue = (sp500Shares * data.value) + 
                              (dowShares * dowData[i].value) + 
-                             (nasdaqShares * nasdaqData[i].value);
+                             (nasdaqShares * nasdaqData[i].value) +
+                             (nancShares * nancData[i].value) +
+                             (nvdaShares * nvdaData[i].value);
             const cumulativeReturn = ((totalValue - initialValue) / initialValue) * 100;
             cumulativeData.push({ date: data.date, return: cumulativeReturn });
         });
@@ -413,13 +475,15 @@
             }
         } else if (graphType === 'performance') {
             console.log('Rendering performance chart');
-            // Filter data based on selected year
+            // Filter data based on selected year and investment amount
             const yearEndDate = selectedYear === '2024' ? '2024-12-31' : '2025-12-31';
             const yearStartDate = selectedYear === '2024' ? '2024-01-01' : '2025-01-01';
             
             const filteredSP500Data = sp500Data.filter(d => d.date >= yearStartDate && d.date <= yearEndDate);
             const filteredDowData = dowData.filter(d => d.date >= yearStartDate && d.date <= yearEndDate);
             const filteredNasdaqData = nasdaqData.filter(d => d.date >= yearStartDate && d.date <= yearEndDate);
+            const filteredNancData = nancData.filter(d => d.date >= yearStartDate && d.date <= yearEndDate);
+            const filteredNvdaData = nvdaData.filter(d => d.date >= yearStartDate && d.date <= yearEndDate);
 
             const labels = filteredSP500Data.map(d => formatDate(d.date));
             let datasets = [];
@@ -428,13 +492,16 @@
                 sp500: 'rgb(59, 130, 246)', // blue-500
                 dow: 'rgb(16, 185, 129)',   // emerald-500
                 nasdaq: 'rgb(236, 72, 153)', // pink-500
-                portfolio: 'rgb(168, 85, 247)' // purple-600
+                portfolio: 'rgb(168, 85, 247)', // purple-600
+                nanc: 'rgb(234, 179, 8)', // yellow-500
+                nvda: 'rgb(249, 115, 22)' // orange-500
             };
 
-            if (visibleStocks.sp500Index) {
+            // Only show stocks with investments > 0
+            if (visibleStocks.has('sp500') && investments.sp500 > 0) {
                 datasets.push({
                     label: 'S&P 500',
-                    data: filteredSP500Data.map(d => d.value),
+                    data: calculatePercentageChange(filteredSP500Data),
                     borderColor: colors.sp500,
                     borderWidth: 2,
                     tension: 0.1,
@@ -442,10 +509,10 @@
                 });
             }
 
-            if (visibleStocks.dowIndex) {
+            if (visibleStocks.has('dow') && investments.dow > 0) {
                 datasets.push({
                     label: 'Dow Jones',
-                    data: filteredDowData.map(d => d.value),
+                    data: calculatePercentageChange(filteredDowData),
                     borderColor: colors.dow,
                     borderWidth: 2,
                     tension: 0.1,
@@ -453,10 +520,10 @@
                 });
             }
 
-            if (visibleStocks.nasdaqIndex) {
+            if (visibleStocks.has('nasdaq') && investments.nasdaq > 0) {
                 datasets.push({
                     label: 'NASDAQ',
-                    data: filteredNasdaqData.map(d => d.value),
+                    data: calculatePercentageChange(filteredNasdaqData),
                     borderColor: colors.nasdaq,
                     borderWidth: 2,
                     tension: 0.1,
@@ -464,17 +531,53 @@
                 });
             }
 
-            if (visibleStocks.totalPortfolio) {
+            if (visibleStocks.has('nanc') && investments.nanc > 0) {
+                datasets.push({
+                    label: 'NANC',
+                    data: calculatePercentageChange(filteredNancData),
+                    borderColor: colors.nanc,
+                    borderWidth: 2,
+                    tension: 0.1,
+                    fill: false
+                });
+            }
+
+            if (visibleStocks.has('nvda') && investments.nvda > 0) {
+                datasets.push({
+                    label: 'NVIDIA',
+                    data: calculatePercentageChange(filteredNvdaData),
+                    borderColor: colors.nvda,
+                    borderWidth: 2,
+                    tension: 0.1,
+                    fill: false
+                });
+            }
+
+            // Only show portfolio if there are any investments
+            if (visibleStocks.has('totalPortfolio') && Object.values(investments).some(v => v > 0)) {
+                const initialPortfolioValue = (sp500Shares * filteredSP500Data[0].value) + 
+                                            (dowShares * filteredDowData[0].value) + 
+                                            (nasdaqShares * filteredNasdaqData[0].value) +
+                                            (nancShares * filteredNancData[0].value) +
+                                            (nvdaShares * filteredNvdaData[0].value);
+
+                const portfolioPercentages = filteredSP500Data.map((d, i) => {
+                    if (filteredDowData[i] && filteredNasdaqData[i] && filteredNancData[i] && filteredNvdaData[i]) {
+                        const currentValue = (sp500Shares * d.value) + 
+                                           (dowShares * filteredDowData[i].value) + 
+                                           (nasdaqShares * filteredNasdaqData[i].value) +
+                                           (nancShares * filteredNancData[i].value) +
+                                           (nvdaShares * filteredNvdaData[i].value);
+                        return ((currentValue - initialPortfolioValue) / initialPortfolioValue) * 100;
+                    }
+                    return 0;
+                });
+
                 datasets.push({
                     label: '★ Carteira Total ★',
-                    data: filteredSP500Data.map((d, i) => {
-                        if (filteredDowData[i] && filteredNasdaqData[i]) {
-                            return (sp500Shares * d.value) + (dowShares * filteredDowData[i].value) + (nasdaqShares * filteredNasdaqData[i].value);
-                        }
-                        return 0;
-                    }),
+                    data: portfolioPercentages,
                     borderColor: colors.portfolio,
-                    backgroundColor: 'rgba(168, 85, 247, 0.1)',
+                    backgroundColor: 'rgba(168, 85, 247, 0.2)',
                     borderWidth: 4,
                     tension: 0.1,
                     fill: true,
@@ -500,13 +603,13 @@
                         scales: {
                             y: {
                                 type: 'linear',
-                                beginAtZero: false,
+                                beginAtZero: true,
                                 ticks: {
-                                    callback: function(this: any, value: string | number) {
-                                        if (typeof value === 'number') {
-                                            return formatCurrency(value);
+                                    callback: function(tickValue: string | number) {
+                                        if (typeof tickValue === 'number') {
+                                            return tickValue.toFixed(2) + '%';
                                         }
-                                        return value;
+                                        return tickValue;
                                     }
                                 }
                             }
@@ -517,14 +620,7 @@
                                     label: function(context: any) {
                                         const label = context.dataset.label || '';
                                         const value = context.parsed.y;
-                                        const initialValue = context.dataset.data[0];
-                                        const growth = calculateGrowth(value, initialValue);
-                                        const growthText = growth.relative >= 0 ? '+' : '';
-                                        
-                                        return [
-                                            `${label}: ${formatCurrency(value)}`,
-                                            `Crescimento: ${growthText}${formatPercentage(growth.relative )}`
-                                        ];
+                                        return `${label}: ${value.toFixed(2)}%`;
                                     }
                                 }
                             },
@@ -571,7 +667,7 @@
                             y: {
                                 beginAtZero: true,
                                 ticks: {
-                                    callback: function(tickValue: number | string) {
+                                    callback: function(tickValue: string | number) {
                                         if (typeof tickValue === 'number') {
                                             return tickValue.toFixed(2) + '%';
                                         }
@@ -616,7 +712,7 @@
                         scales: {
                             y: {
                                 ticks: {
-                                    callback: function(tickValue: number | string) {
+                                    callback: function(tickValue: string | number) {
                                         if (typeof tickValue === 'number') {
                                             return tickValue.toFixed(2) + '%';
                                         }
@@ -737,15 +833,161 @@
             updateChart();
         }, 50);
     }
+
+    function calculatePercentageChange(data: IndexData[]): number[] {
+        const initialValue = data[0].value;
+        return data.map(d => ((d.value - initialValue) / initialValue) * 100);
+    }
 </script>
 
 <div class="container mx-auto p-4 bg-gray-900 text-white min-h-screen relative">
     {#if showRefreshIndicator}
-        <div class="fixed top-4 right-4 bg-gray-800 text-gray-300 px-2 py-1 rounded text-sm opacity-75 transition-opacity">
-            Atualizado ↻
+        <div class="absolute top-4 right-4 text-green-500">
+            <span class="animate-ping">↻</span>
         </div>
     {/if}
-    <h1 class="text-3xl font-bold mb-6 text-center">Simulador de Investimento</h1>
+
+    <StockPerformance 
+        sp500Data={sp500Data}
+        dowData={dowData}
+        nasdaqData={nasdaqData}
+        nancData={nancData}
+        nvdaData={nvdaData}
+    />
+
+    <!-- Wallet Section -->
+    <div class="bg-gray-800 p-6 rounded-lg shadow-lg mb-8 border-2 border-purple-500">
+        <h2 class="text-2xl font-bold mb-4 flex items-center">
+            <span class="text-purple-400 mr-2">★</span>
+            Carteira de Investimentos
+            <span class="text-purple-400 ml-2">★</span>
+        </h2>
+        <div class="grid grid-cols-1 md:grid-cols-5 gap-4">
+            <!-- S&P 500 -->
+            <div class="bg-gray-700 p-4 rounded-lg {investments.sp500 > 0 ? 'border-l-4 border-blue-500' : ''}">
+                <div class="flex justify-between items-center mb-2">
+                    <h3 class="font-semibold">S&P 500</h3>
+                    <button
+                        class="text-gray-400 hover:text-red-500 transition-colors"
+                        on:click={() => deleteInvestment('sp500')}
+                        title="Remover investimento"
+                    >
+                        ×
+                    </button>
+                </div>
+                <input
+                    type="number"
+                    value={investments.sp500}
+                    on:input={(e) => handleInvestmentChange(e.currentTarget.value, 'sp500')}
+                    class="w-full p-2 bg-gray-600 rounded text-white"
+                    min="0"
+                    max="1000000000"
+                />
+                <p class="text-sm text-gray-400 mt-1">{formatCurrency(investments.sp500)}</p>
+            </div>
+
+            <!-- Dow Jones -->
+            <div class="bg-gray-700 p-4 rounded-lg {investments.dow > 0 ? 'border-l-4 border-emerald-500' : ''}">
+                <div class="flex justify-between items-center mb-2">
+                    <h3 class="font-semibold">Dow Jones</h3>
+                    <button
+                        class="text-gray-400 hover:text-red-500 transition-colors"
+                        on:click={() => deleteInvestment('dow')}
+                        title="Remover investimento"
+                    >
+                        ×
+                    </button>
+                </div>
+                <input
+                    type="number"
+                    value={investments.dow}
+                    on:input={(e) => handleInvestmentChange(e.currentTarget.value, 'dow')}
+                    class="w-full p-2 bg-gray-600 rounded text-white"
+                    min="0"
+                    max="1000000000"
+                />
+                <p class="text-sm text-gray-400 mt-1">{formatCurrency(investments.dow)}</p>
+            </div>
+
+            <!-- NASDAQ -->
+            <div class="bg-gray-700 p-4 rounded-lg {investments.nasdaq > 0 ? 'border-l-4 border-pink-500' : ''}">
+                <div class="flex justify-between items-center mb-2">
+                    <h3 class="font-semibold">NASDAQ</h3>
+                    <button
+                        class="text-gray-400 hover:text-red-500 transition-colors"
+                        on:click={() => deleteInvestment('nasdaq')}
+                        title="Remover investimento"
+                    >
+                        ×
+                    </button>
+                </div>
+                <input
+                    type="number"
+                    value={investments.nasdaq}
+                    on:input={(e) => handleInvestmentChange(e.currentTarget.value, 'nasdaq')}
+                    class="w-full p-2 bg-gray-600 rounded text-white"
+                    min="0"
+                    max="1000000000"
+                />
+                <p class="text-sm text-gray-400 mt-1">{formatCurrency(investments.nasdaq)}</p>
+            </div>
+
+            <!-- NANC -->
+            <div class="bg-gray-700 p-4 rounded-lg {investments.nanc > 0 ? 'border-l-4 border-yellow-500' : ''}">
+                <div class="flex justify-between items-center mb-2">
+                    <h3 class="font-semibold">NANC</h3>
+                    <button
+                        class="text-gray-400 hover:text-red-500 transition-colors"
+                        on:click={() => deleteInvestment('nanc')}
+                        title="Remover investimento"
+                    >
+                        ×
+                    </button>
+                </div>
+                <input
+                    type="number"
+                    value={investments.nanc}
+                    on:input={(e) => handleInvestmentChange(e.currentTarget.value, 'nanc')}
+                    class="w-full p-2 bg-gray-600 rounded text-white"
+                    min="0"
+                    max="1000000000"
+                />
+                <p class="text-sm text-gray-400 mt-1">{formatCurrency(investments.nanc)}</p>
+            </div>
+
+            <!-- NVIDIA -->
+            <div class="bg-gray-700 p-4 rounded-lg {investments.nvda > 0 ? 'border-l-4 border-orange-500' : ''}">
+                <div class="flex justify-between items-center mb-2">
+                    <h3 class="font-semibold">NVIDIA</h3>
+                    <button
+                        class="text-gray-400 hover:text-red-500 transition-colors"
+                        on:click={() => deleteInvestment('nvda')}
+                        title="Remover investimento"
+                    >
+                        ×
+                    </button>
+                </div>
+                <input
+                    type="number"
+                    value={investments.nvda}
+                    on:input={(e) => handleInvestmentChange(e.currentTarget.value, 'nvda')}
+                    class="w-full p-2 bg-gray-600 rounded text-white"
+                    min="0"
+                    max="1000000000"
+                />
+                <p class="text-sm text-gray-400 mt-1">{formatCurrency(investments.nvda)}</p>
+            </div>
+        </div>
+        <div class="mt-4 flex justify-between items-center bg-gray-700 p-4 rounded-lg">
+            <div>
+                <span class="text-lg font-semibold">Investimento Total:</span>
+                <span class="text-2xl font-bold ml-2 text-purple-400">{formatCurrency(totalInvestment)}</span>
+            </div>
+            <div class="text-sm text-gray-400">
+                {Object.values(investments).filter(v => v > 0).length} ativos na carteira
+            </div>
+        </div>
+    </div>
 
     <div class="flex justify-center space-x-4 mb-6">
         <button
@@ -762,23 +1004,12 @@
         </button>
     </div>
 
+    <!-- Three Panels Section -->
     <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
         <div class="bg-gray-800 p-4 rounded-lg">
             <h2 class="text-xl font-semibold mb-4">Detalhes do Investimento</h2>
             <div class="space-y-4">
-                <div>
-                    <label for="view-mode" class="block mb-2">Visualização:</label>
-                    <select
-                        id="view-mode"
-                        bind:value={viewMode}
-                        class="w-full p-2 bg-gray-700 rounded"
-                    >
-                        <option value="COMBINED">Carteira Completa</option>
-                        <option value="SP500">Apenas S&P 500</option>
-                        <option value="DOW">Apenas Dow Jones</option>
-                        <option value="NASDAQ">Apenas NASDAQ</option>
-                    </select>
-                </div>
+               
                 <div>
                     <label for="investment-amount" class="block mb-2">
                         {viewMode === 'COMBINED' ? 'Montante por Índice' : 'Montante do Índice'} (EUR):
@@ -793,8 +1024,15 @@
                                     on:input={(e) => handleInvestmentChange(e.currentTarget.value, 'sp500')}
                                     class="flex-1 p-2 bg-gray-700 rounded text-white"
                                     min="0"
-                                    step="1000"
+                                    max="1000000000"
                                 />
+                                <button
+                                    class="p-2 text-red-500 hover:text-red-400"
+                                    on:click={() => deleteInvestment('sp500')}
+                                    title="Excluir investimento"
+                                >
+                                    ×
+                                </button>
                             </div>
                             <div class="flex items-center gap-2">
                                 <label class="w-24">Dow Jones:</label>
@@ -804,8 +1042,15 @@
                                     on:input={(e) => handleInvestmentChange(e.currentTarget.value, 'dow')}
                                     class="flex-1 p-2 bg-gray-700 rounded text-white"
                                     min="0"
-                                    step="1000"
+                                    max="1000000000"
                                 />
+                                <button
+                                    class="p-2 text-red-500 hover:text-red-400"
+                                    on:click={() => deleteInvestment('dow')}
+                                    title="Excluir investimento"
+                                >
+                                    ×
+                                </button>
                             </div>
                             <div class="flex items-center gap-2">
                                 <label class="w-24">NASDAQ:</label>
@@ -815,19 +1060,61 @@
                                     on:input={(e) => handleInvestmentChange(e.currentTarget.value, 'nasdaq')}
                                     class="flex-1 p-2 bg-gray-700 rounded text-white"
                                     min="0"
-                                    step="1000"
+                                    max="1000000000"
                                 />
+                                <button
+                                    class="p-2 text-red-500 hover:text-red-400"
+                                    on:click={() => deleteInvestment('nasdaq')}
+                                    title="Excluir investimento"
+                                >
+                                    ×
+                                </button>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <label class="w-24">NANC:</label>
+                                <input
+                                    type="number"
+                                    value={investments.nanc}
+                                    on:input={(e) => handleInvestmentChange(e.currentTarget.value, 'nanc')}
+                                    class="flex-1 p-2 bg-gray-700 rounded text-white"
+                                    min="0"
+                                    max="1000000000"
+                                />
+                                <button
+                                    class="p-2 text-red-500 hover:text-red-400"
+                                    on:click={() => deleteInvestment('nanc')}
+                                    title="Excluir investimento"
+                                >
+                                    ×
+                                </button>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <label class="w-24">NVIDIA:</label>
+                                <input
+                                    type="number"
+                                    value={investments.nvda}
+                                    on:input={(e) => handleInvestmentChange(e.currentTarget.value, 'nvda')}
+                                    class="flex-1 p-2 bg-gray-700 rounded text-white"
+                                    min="0"
+                                    max="1000000000"
+                                />
+                                <button
+                                    class="p-2 text-red-500 hover:text-red-400"
+                                    on:click={() => deleteInvestment('nvda')}
+                                    title="Excluir investimento"
+                                >
+                                    ×
+                                </button>
                             </div>
                         </div>
                     {:else}
                         <input
-                            id="investment-amount"
                             type="number"
-                            value={investmentAmount}
+                            value={investments[viewMode.toLowerCase() as keyof typeof investments]}
                             on:input={(e) => handleInvestmentChange(e.currentTarget.value)}
                             class="w-full p-2 bg-gray-700 rounded text-white"
                             min="0"
-                            step="1000"
+                            max="1000000000"
                         />
                     {/if}
                     <p class="text-sm text-gray-400 mt-1">Investimento total: {formatCurrency(totalInvestment)}</p>
@@ -835,42 +1122,108 @@
                 <div class="space-y-2">
                     <h3 class="font-medium">Visibilidade do Gráfico:</h3>
                     <div class="grid grid-cols-2 gap-2">
-                        <label class="flex items-center space-x-2">
+                        <div class="flex items-center space-x-2">
                             <input
                                 type="checkbox"
-                                bind:checked={visibleStocks.sp500Index}
-                                on:change={updateChart}
+                                checked={visibleStocks.has('sp500')}
+                                on:change={() => {
+                                    if (visibleStocks.has('sp500')) {
+                                        visibleStocks.delete('sp500');
+                                    } else {
+                                        visibleStocks.add('sp500');
+                                    }
+                                    visibleStocks = visibleStocks;
+                                    updateChart();
+                                }}
                                 class="form-checkbox text-blue-500"
                             />
-                            <span class="text-sm whitespace-nowrap">S&P 500</span>
-                        </label>
-                        <label class="flex items-center space-x-2">
+                            <span>S&P 500</span>
+                        </div>
+                        <div class="flex items-center space-x-2">
                             <input
                                 type="checkbox"
-                                bind:checked={visibleStocks.dowIndex}
-                                on:change={updateChart}
+                                checked={visibleStocks.has('dow')}
+                                on:change={() => {
+                                    if (visibleStocks.has('dow')) {
+                                        visibleStocks.delete('dow');
+                                    } else {
+                                        visibleStocks.add('dow');
+                                    }
+                                    visibleStocks = visibleStocks;
+                                    updateChart();
+                                }}
                                 class="form-checkbox text-emerald-500"
                             />
-                            <span class="text-sm whitespace-nowrap">Dow Jones</span>
-                        </label>
-                        <label class="flex items-center space-x-2">
+                            <span>Dow Jones</span>
+                        </div>
+                        <div class="flex items-center space-x-2">
                             <input
                                 type="checkbox"
-                                bind:checked={visibleStocks.nasdaqIndex}
-                                on:change={updateChart}
+                                checked={visibleStocks.has('nasdaq')}
+                                on:change={() => {
+                                    if (visibleStocks.has('nasdaq')) {
+                                        visibleStocks.delete('nasdaq');
+                                    } else {
+                                        visibleStocks.add('nasdaq');
+                                    }
+                                    visibleStocks = visibleStocks;
+                                    updateChart();
+                                }}
                                 class="form-checkbox text-pink-500"
                             />
-                            <span class="text-sm whitespace-nowrap">NASDAQ</span>
-                        </label>
-                        <label class="flex items-center space-x-2">
+                            <span>NASDAQ</span>
+                        </div>
+                        <div class="flex items-center space-x-2">
                             <input
                                 type="checkbox"
-                                bind:checked={visibleStocks.totalPortfolio}
-                                on:change={updateChart}
-                                class="form-checkbox text-purple-500"
+                                checked={visibleStocks.has('nanc')}
+                                on:change={() => {
+                                    if (visibleStocks.has('nanc')) {
+                                        visibleStocks.delete('nanc');
+                                    } else {
+                                        visibleStocks.add('nanc');
+                                    }
+                                    visibleStocks = visibleStocks;
+                                    updateChart();
+                                }}
+                                class="form-checkbox text-yellow-500"
                             />
-                            <span class="text-sm whitespace-nowrap">Carteira Total</span>
-                        </label>
+                            <span>NANC</span>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <input
+                                type="checkbox"
+                                checked={visibleStocks.has('nvda')}
+                                on:change={() => {
+                                    if (visibleStocks.has('nvda')) {
+                                        visibleStocks.delete('nvda');
+                                    } else {
+                                        visibleStocks.add('nvda');
+                                    }
+                                    visibleStocks = visibleStocks;
+                                    updateChart();
+                                }}
+                                class="form-checkbox text-orange-500"
+                            />
+                            <span>NVIDIA</span>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <input
+                                type="checkbox"
+                                checked={visibleStocks.has('totalPortfolio')}
+                                on:change={() => {
+                                    if (visibleStocks.has('totalPortfolio')) {
+                                        visibleStocks.delete('totalPortfolio');
+                                    } else {
+                                        visibleStocks.add('totalPortfolio');
+                                    }
+                                    visibleStocks = visibleStocks;
+                                    updateChart();
+                                }}
+                                class="form-checkbox text-purple-400 w-5 h-5 border-2 border-purple-400"
+                            />
+                            <span class="font-bold text-purple-400">★ Total Portfolio ★</span>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -951,11 +1304,11 @@
                     <div class="space-y-2">
                         <div class="flex justify-between">
                             <span class="text-sm">Imposto do Selo</span>
-                            <span class="text-sm text-red-400">-{formatCurrency(sp500BuyTransactionTax + dowBuyTransactionTax + nasdaqBuyTransactionTax + sp500SellTransactionTax + dowSellTransactionTax + nasdaqSellTransactionTax)}</span>
+                            <span class="text-sm text-red-400">-{formatCurrency(sp500BuyTransactionTax + dowBuyTransactionTax + nasdaqBuyTransactionTax)}</span>
                         </div>
                         <div class="flex justify-between">
                             <span class="text-sm">Comissão do Broker</span>
-                            <span class="text-sm text-red-400">-{formatCurrency(sp500BuyBrokerFee + dowBuyBrokerFee + nasdaqBuyBrokerFee + sp500SellBrokerFee + dowSellBrokerFee + nasdaqSellBrokerFee)}</span>
+                            <span class="text-sm text-red-400">-{formatCurrency(sp500BuyBrokerFee + dowBuyBrokerFee + nasdaqBuyBrokerFee)}</span>
                         </div>
                         <div class="flex justify-between">
                             <span class="text-sm">Taxa de Custódia</span>
@@ -998,49 +1351,6 @@
                     </div>
                 </div>
             </div>
-        </div>
-    </div>
-
-    <div class="bg-gray-800 p-4 rounded-lg mt-4">
-        <div class="flex items-center justify-between mb-4">
-            <h2 class="text-xl font-semibold">Gráfico de Desempenho</h2>
-            <div class="flex space-x-2">
-                <button
-                    class="px-4 py-2 rounded {graphType === 'performance' ? 'bg-red-600' : 'bg-gray-700'}"
-                    on:click={() => handleGraphTypeChange('performance')}
-                >
-                    Desempenho
-                </button>
-                <button
-                    class="px-4 py-2 rounded {graphType === 'monthly-returns' ? 'bg-red-600' : 'bg-gray-700'}"
-                    on:click={() => handleGraphTypeChange('monthly-returns')}
-                >
-                    Retornos Mensais
-                </button>
-                <button
-                    class="px-4 py-2 rounded {graphType === 'cumulative-returns' ? 'bg-red-600' : 'bg-gray-700'}"
-                    on:click={() => handleGraphTypeChange('cumulative-returns')}
-                >
-                    Retorno Acumulado
-                </button>
-                <button
-                    class="px-4 py-2 rounded {graphType === 'tax-breakdown' ? 'bg-red-600' : 'bg-gray-700'}"
-                    on:click={() => handleGraphTypeChange('tax-breakdown')}
-                >
-                    Distribuição de Custos
-                </button>
-            </div>
-        </div>
-        <div class="h-[400px] relative">
-            {#if graphType === 'performance'}
-                <canvas bind:this={performanceCanvas}></canvas>
-            {:else if graphType === 'monthly-returns'}
-                <canvas bind:this={monthlyReturnsCanvas}></canvas>
-            {:else if graphType === 'cumulative-returns'}
-                <canvas bind:this={cumulativeReturnsCanvas}></canvas>
-            {:else}
-                <canvas bind:this={taxBreakdownCanvas}></canvas>
-            {/if}
         </div>
     </div>
 
@@ -1104,11 +1414,11 @@
                             <span class="text-sm text-red-400">-{formatCurrency(sp500BuyBrokerFee + dowBuyBrokerFee + nasdaqBuyBrokerFee)}</span>
                         </div>
                         <div class="flex justify-between">
-                            <span class="text-sm">Taxa de Acesso ao Mercado (0.05%)</span>
-                            <span class="text-sm text-red-400">-{formatCurrency(sp500BuyMarketFee + dowBuyMarketFee + nasdaqBuyMarketFee)}</span>
+                            <span class="text-sm">Taxa de Custódia</span>
+                            <span class="text-sm text-red-400">-{formatCurrency(sp500CustodyFees + dowCustodyFees + nasdaqCustodyFees)}</span>
                         </div>
                         <div class="flex justify-between">
-                            <span class="text-sm">Taxa de Bolsa (0.02%)</span>
+                            <span class="text-sm">Taxa de Bolsa</span>
                             <span class="text-sm text-red-400">-{formatCurrency(sp500BuyExchangeFee + dowBuyExchangeFee + nasdaqBuyExchangeFee)}</span>
                         </div>
                     </div>
@@ -1126,11 +1436,11 @@
                             <span class="text-sm text-red-400">-{formatCurrency(sp500SellBrokerFee + dowSellBrokerFee + nasdaqSellBrokerFee)}</span>
                         </div>
                         <div class="flex justify-between">
-                            <span class="text-sm">Taxa de Acesso ao Mercado (0.05%)</span>
-                            <span class="text-sm text-red-400">-{formatCurrency(sp500SellMarketFee + dowSellMarketFee + nasdaqSellMarketFee)}</span>
+                            <span class="text-sm">Taxa de Custódia</span>
+                            <span class="text-sm text-red-400">-{formatCurrency(sp500CustodyFees + dowCustodyFees + nasdaqCustodyFees)}</span>
                         </div>
                         <div class="flex justify-between">
-                            <span class="text-sm">Taxa de Bolsa (0.02%)</span>
+                            <span class="text-sm">Taxa de Bolsa</span>
                             <span class="text-sm text-red-400">-{formatCurrency(sp500SellExchangeFee + dowSellExchangeFee + nasdaqSellExchangeFee)}</span>
                         </div>
                     </div>
@@ -1179,6 +1489,50 @@
                     </div>
                 </div>
             </div>
+        </div>
+    </div>
+
+    <!-- Graph Section -->
+    <div class="bg-gray-800 p-4 rounded-lg">
+        <div class="flex items-center justify-between mb-4">
+            <h2 class="text-xl font-semibold">Gráfico de Desempenho</h2>
+            <div class="flex space-x-2">
+                <button
+                    class="px-4 py-2 rounded {graphType === 'performance' ? 'bg-red-600' : 'bg-gray-700'}"
+                    on:click={() => handleGraphTypeChange('performance')}
+                >
+                    Desempenho
+                </button>
+                <button
+                    class="px-4 py-2 rounded {graphType === 'monthly-returns' ? 'bg-red-600' : 'bg-gray-700'}"
+                    on:click={() => handleGraphTypeChange('monthly-returns')}
+                >
+                    Retornos Mensais
+                </button>
+                <button
+                    class="px-4 py-2 rounded {graphType === 'cumulative-returns' ? 'bg-red-600' : 'bg-gray-700'}"
+                    on:click={() => handleGraphTypeChange('cumulative-returns')}
+                >
+                    Retorno Acumulado
+                </button>
+                <button
+                    class="px-4 py-2 rounded {graphType === 'tax-breakdown' ? 'bg-red-600' : 'bg-gray-700'}"
+                    on:click={() => handleGraphTypeChange('tax-breakdown')}
+                >
+                    Distribuição de Custos
+                </button>
+            </div>
+        </div>
+        <div class="h-[400px] relative">
+            {#if graphType === 'performance'}
+                <canvas bind:this={performanceCanvas}></canvas>
+            {:else if graphType === 'monthly-returns'}
+                <canvas bind:this={monthlyReturnsCanvas}></canvas>
+            {:else if graphType === 'cumulative-returns'}
+                <canvas bind:this={cumulativeReturnsCanvas}></canvas>
+            {:else}
+                <canvas bind:this={taxBreakdownCanvas}></canvas>
+            {/if}
         </div>
     </div>
 </div>

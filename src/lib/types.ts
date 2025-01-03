@@ -38,4 +38,6 @@ export interface HistoricalData {
     SP500: IndexData[];
     DOW: IndexData[];
     NASDAQ: IndexData[];
+    NANC: IndexData[];
+    NVDA: IndexData[];
 } 
